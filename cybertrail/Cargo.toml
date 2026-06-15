@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/common",
+    "crates/domain",
+    "crates/application",
+    "crates/database",
+    "crates/sensors",
+    "crates/tracking",
+    "crates/altitude",
+    "crates/navigation",
+    "crates/rendering",
+    "crates/infrastructure",
+    "crates/ffi",
+    "crates/sync",
+    "crates/crypto",
+    "crates/search",
+    "crates/ar_anchor"
+]
+
+[workspace.dependencies]
+tokio = { version = "1.38", features = ["full"] }
+uuid = { version = "1.8", features = ["v7", "serde", "v4"] }
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+async-trait = "0.1"
+tracing = "0.1"
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio", "macros"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

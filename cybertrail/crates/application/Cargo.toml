@@ -1,0 +1,15 @@
+[package]
+name = "application"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+domain = { path = "../domain" }
+tracking = { path = "../tracking" }
+sensors = { path = "../sensors" }
+common = { path = "../common" }
+tracing.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+serde.workspace = true
+async-trait.workspace = true

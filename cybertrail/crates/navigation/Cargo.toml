@@ -1,0 +1,10 @@
+[package]
+name = "navigation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+domain = { path = "../domain" }
+tracing.workspace = true
+thiserror.workspace = true

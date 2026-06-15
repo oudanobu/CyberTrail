@@ -1,0 +1,6 @@
+{
+  "name": "CyberTrail Architecture",
+  "description": "Interactive rules explorer, workspace dependency visualizer, tracing engine simulator, and Gemini-powered architecture compiler compliance auditor for CyberTrail.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

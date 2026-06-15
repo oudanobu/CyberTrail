@@ -1,0 +1,16 @@
+[package]
+name = "ffi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+application = { path = "../application" }
+domain = { path = "../domain" }
+infrastructure = { path = "../infrastructure" }
+common = { path = "../common" }
+jni = "0.21"
+tracing.workspace = true
+thiserror.workspace = true
+
+[lib]
+crate-type = ["cdylib"]

@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Sleek custom dark scrollbars for our interactive consoles */
+  .scrolling::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrolling::-webkit-scrollbar-track {
+    background: #0d1117;
+  }
+  .scrolling::-webkit-scrollbar-thumb {
+    background: #21262d;
+    border-radius: 4px;
+  }
+  .scrolling::-webkit-scrollbar-thumb:hover {
+    background: #30363d;
+  }
+
+  /* Glow effects and status animations */
+  .glow {
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+  }
+
+  .blink {
+    animation: blinker 1.5s linear infinite;
+  }
+
+  @keyframes blinker {
+    50% {
+      opacity: 0.3;
+    }
+  }
+}
+
