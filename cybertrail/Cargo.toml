@@ -25,7 +25,7 @@ thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1"
 tracing = "0.1"
-sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio", "macros"] }
+rusqlite = { version = "0.31", features = ["bundled", "uuid", "chrono"] }
 
 [profile.release]
 opt-level = 3

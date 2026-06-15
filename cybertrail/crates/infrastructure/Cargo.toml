@@ -12,7 +12,7 @@ common = { path = "../common" }
 ar_anchor = { path = "../ar_anchor" }
 tracing.workspace = true
 thiserror.workspace = true
-rusqlite = { version = "0.31", features = ["bundled", "uuid", "chrono"] }
+rusqlite.workspace = true
 r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 tokio = { workspace = true, features = ["rt-multi-thread"] }
