@@ -6,32 +6,44 @@ use r2d2::Error as PoolError;
 
 #[derive(Error, Debug)]
 pub enum InfrastructureError {
-    #[error("Database error: {0}")]
-    Database(#[from] RusqliteError),
+    #[error("SQLite database error: {0}")]
+    SqliteError(String),
 
-    #[error("Connection pool error: {0}")]
-    Pool(#[from] PoolError),
+    #[error("I/O error: {0}")]
+    IoError(String),
 
-    #[error("Domain mapping error: {0}")]
-    Mapping(String),
+    #[error("Mapping error: {0}")]
+    MappingError(String),
+}
 
-    #[error("Concurrency error: {0}")]
-    Concurrency(String),
+impl From<RusqliteError> for InfrastructureError {
+    fn from(error: RusqliteError) -> Self {
+        InfrastructureError::SqliteError(error.to_string())
+    }
+}
+
+impl From<PoolError> for InfrastructureError {
+    fn from(error: PoolError) -> Self {
+        InfrastructureError::SqliteError(format!("Pool error: {}", error))
+    }
 }
 
 impl From<InfrastructureError> for ApplicationError {
     fn from(error: InfrastructureError) -> Self {
         match error {
-            InfrastructureError::Database(err) => ApplicationError::Infrastructure(format!("SQLite Error: {}", err)),
-            InfrastructureError::Pool(err) => ApplicationError::Infrastructure(format!("Pool Error: {}", err)),
-            InfrastructureError::Mapping(msg) => ApplicationError::Infrastructure(format!("Mapping Error: {}", msg)),
-            InfrastructureError::Concurrency(msg) => ApplicationError::Infrastructure(format!("Concurrency Error: {}", msg)),
+            InfrastructureError::SqliteError(msg) => ApplicationError::Infrastructure(format!("SQLite Error: {}", msg)),
+            InfrastructureError::IoError(msg) => ApplicationError::Infrastructure(format!("I/O Error: {}", msg)),
+            InfrastructureError::MappingError(msg) => ApplicationError::Infrastructure(format!("Mapping Error: {}", msg)),
         }
     }
 }
 
 impl From<InfrastructureError> for DomainError {
     fn from(error: InfrastructureError) -> Self {
-        DomainError::InfrastructureError(error.to_string())
+        match error {
+            InfrastructureError::SqliteError(msg) => DomainError::Conflict(format!("Database error: {}", msg)),
+            InfrastructureError::IoError(msg) => DomainError::Conflict(format!("I/O error: {}", msg)),
+            InfrastructureError::MappingError(msg) => DomainError::ValidationError(msg),
+        }
     }
 }

@@ -66,7 +66,7 @@ impl WaypointRepository for SqliteWaypointRepository {
             Ok(())
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(())
     }
@@ -96,14 +96,14 @@ impl WaypointRepository for SqliteWaypointRepository {
             }).optional()?;
 
             if let Some((id_str, track_id_str, name, latitude, longitude, altitude_opt, notes, is_deleted, revision, created_at, updated_at)) = wp_opt {
-                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let track_id = match track_id_str {
-                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
-                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let alt = match altitude_opt {
-                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
                 let rev = Revision::new(revision as u64);
@@ -116,7 +116,7 @@ impl WaypointRepository for SqliteWaypointRepository {
             }
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(waypoint)
     }
@@ -149,14 +149,14 @@ impl WaypointRepository for SqliteWaypointRepository {
             for item in wp_iter {
                 let (id_str, track_id_str, name, latitude, longitude, altitude_opt, notes, is_deleted, revision, created_at, updated_at) = item?;
                 
-                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let track_id = match track_id_str {
-                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
-                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let alt = match altitude_opt {
-                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
                 let rev = Revision::new(revision as u64);
@@ -168,7 +168,7 @@ impl WaypointRepository for SqliteWaypointRepository {
             Ok(waypoints)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(waypoints)
     }
@@ -184,7 +184,7 @@ impl WaypointRepository for SqliteWaypointRepository {
             Ok(exists)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(exists)
     }
@@ -217,14 +217,14 @@ impl WaypointRepository for SqliteWaypointRepository {
             for item in wp_iter {
                 let (id_str, track_id_str, name, latitude, longitude, altitude_opt, notes, is_deleted, revision, created_at, updated_at) = item?;
                 
-                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let id = WaypointId::from_str(&id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let track_id = match track_id_str {
-                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(s) => Some(TrackId::from_str(&s).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
-                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let coord = Coordinate::new(latitude, longitude).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let alt = match altitude_opt {
-                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::Mapping(e.to_string()))?),
+                    Some(a) => Some(Altitude::new(a).map_err(|e| InfrastructureError::MappingError(e.to_string()))?),
                     None => None,
                 };
                 let rev = Revision::new(revision as u64);
@@ -236,7 +236,7 @@ impl WaypointRepository for SqliteWaypointRepository {
             Ok(waypoints)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(waypoints)
     }

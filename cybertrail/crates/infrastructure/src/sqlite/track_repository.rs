@@ -75,7 +75,7 @@ impl TrackRepository for SqliteTrackRepository {
             Ok(())
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(())
     }
@@ -109,12 +109,12 @@ impl TrackRepository for SqliteTrackRepository {
             }).optional()?;
 
             if let Some((id_str, name, started_at, ended_at, duration_seconds, distance_m, ascent_m, descent_m, avg_speed_ms, max_speed_ms, max_altitude_m, min_altitude_m, is_deleted, revision, updated_at)) = track_opt {
-                let id = TrackId::from_str(&id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let dist = Distance::new(distance_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let asc = Distance::new(ascent_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let desc = Distance::new(descent_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let avg_spd = Speed::new(avg_speed_ms).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let max_spd = Speed::new(max_speed_ms).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let id = TrackId::from_str(&id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let dist = Distance::new(distance_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let asc = Distance::new(ascent_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let desc = Distance::new(descent_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let avg_spd = Speed::new(avg_speed_ms).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let max_spd = Speed::new(max_speed_ms).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let rev = Revision::new(revision as u64);
 
                 Ok(Some(Track::reconstitute(
@@ -125,7 +125,7 @@ impl TrackRepository for SqliteTrackRepository {
             }
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(track)
     }
@@ -141,7 +141,7 @@ impl TrackRepository for SqliteTrackRepository {
             Ok(exists)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(exists)
     }
@@ -178,12 +178,12 @@ impl TrackRepository for SqliteTrackRepository {
             for item in track_iter {
                 let (id_str, name, started_at, ended_at, duration_seconds, distance_m, ascent_m, descent_m, avg_speed_ms, max_speed_ms, max_altitude_m, min_altitude_m, is_deleted, revision, updated_at) = item?;
                 
-                let id = TrackId::from_str(&id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let dist = Distance::new(distance_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let asc = Distance::new(ascent_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let desc = Distance::new(descent_m).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let avg_spd = Speed::new(avg_speed_ms).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
-                let max_spd = Speed::new(max_speed_ms).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let id = TrackId::from_str(&id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let dist = Distance::new(distance_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let asc = Distance::new(ascent_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let desc = Distance::new(descent_m).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let avg_spd = Speed::new(avg_speed_ms).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
+                let max_spd = Speed::new(max_speed_ms).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 let rev = Revision::new(revision as u64);
 
                 tracks.push(Track::reconstitute(
@@ -193,7 +193,7 @@ impl TrackRepository for SqliteTrackRepository {
             Ok(tracks)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(tracks)
     }

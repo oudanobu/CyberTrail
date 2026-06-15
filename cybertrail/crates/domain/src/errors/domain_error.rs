@@ -6,13 +6,10 @@ pub enum DomainError {
     ValidationError(String),
 
     #[error("Conflict Error: {0}")]
-    ConflictError(String),
+    Conflict(String),
 
-    #[error("Encryption Error: {0}")]
-    EncryptionError(String),
-
-    #[error("Repository Error: {0}")]
-    RepositoryError(String),
+    #[error("Not Found Error: {0}")]
+    NotFound(String),
     
     #[error("Illegal State Error: {0}")]
     IllegalStateError(String),

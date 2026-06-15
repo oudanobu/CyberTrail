@@ -81,7 +81,7 @@ impl TrackPointRepository for SqliteTrackPointRepository {
             Ok(())
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(())
     }
@@ -110,14 +110,14 @@ impl TrackPointRepository for SqliteTrackPointRepository {
             })?;
 
             let mut points = Vec::new();
-            let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+            let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
 
             for item in tp_iter {
                 let (timestamp, lat_micro, lon_micro, alt_cm) = item?;
                 
                 let lat = (lat_micro as f64) / 1_000_000.0;
                 let lon = (lon_micro as f64) / 1_000_000.0;
-                let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                 
                 let alt = alt_cm.map(|cm| {
                     Altitude::new((cm as f64) / 100.0).unwrap_or_else(|_| Altitude::new(0.0).unwrap())
@@ -129,7 +129,7 @@ impl TrackPointRepository for SqliteTrackPointRepository {
             Ok(points)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(track_points)
     }
@@ -145,7 +145,7 @@ impl TrackPointRepository for SqliteTrackPointRepository {
             Ok(count as u64)
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(count)
     }
@@ -174,21 +174,21 @@ impl TrackPointRepository for SqliteTrackPointRepository {
 
             match tp_opt {
                 Ok((timestamp, lat_micro, lon_micro, alt_cm)) => {
-                    let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                    let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                     let lat = (lat_micro as f64) / 1_000_000.0;
                     let lon = (lon_micro as f64) / 1_000_000.0;
-                    let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                    let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                     let alt = alt_cm.map(|cm| {
                         Altitude::new((cm as f64) / 100.0).unwrap_or_else(|_| Altitude::new(0.0).unwrap())
                     });
                     Ok(Some(TrackPoint::new(tid, timestamp, coord, alt)))
                 },
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(InfrastructureError::Database(e)),
+                Err(e) => Err(InfrastructureError::SqliteError(e.to_string())),
             }
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(point)
     }
@@ -217,21 +217,21 @@ impl TrackPointRepository for SqliteTrackPointRepository {
 
             match tp_opt {
                 Ok((timestamp, lat_micro, lon_micro, alt_cm)) => {
-                    let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                    let tid = TrackId::from_str(&track_id_str).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                     let lat = (lat_micro as f64) / 1_000_000.0;
                     let lon = (lon_micro as f64) / 1_000_000.0;
-                    let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::Mapping(e.to_string()))?;
+                    let coord = Coordinate::new(lat, lon).map_err(|e| InfrastructureError::MappingError(e.to_string()))?;
                     let alt = alt_cm.map(|cm| {
                         Altitude::new((cm as f64) / 100.0).unwrap_or_else(|_| Altitude::new(0.0).unwrap())
                     });
                     Ok(Some(TrackPoint::new(tid, timestamp, coord, alt)))
                 },
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                Err(e) => Err(InfrastructureError::Database(e)),
+                Err(e) => Err(InfrastructureError::SqliteError(e.to_string())),
             }
         })
         .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+        .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(point)
     }
@@ -247,9 +247,9 @@ impl TrackPointRepository for SqliteTrackPointRepository {
                 params![track_id_str],
             )?;
             Ok(())
-        })
-        .await
-        .map_err(|e| InfrastructureError::Concurrency(e.to_string()))??;
+         })
+         .await
+         .map_err(|e| InfrastructureError::SqliteError(format!("Concurrency error: {}", e)))??;
 
         Ok(())
     }
