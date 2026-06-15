@@ -88,6 +88,7 @@ impl Track {
         self.revision
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstitute(
         id: TrackId, name: String, started_at: i64, ended_at: Option<i64>,
         duration_seconds: i64, distance_m: Distance, ascent_m: Distance, descent_m: Distance,

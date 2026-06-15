@@ -82,6 +82,7 @@ impl Waypoint {
         self.revision
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstitute(
         id: WaypointId, track_id: Option<TrackId>, name: String, coordinate: Coordinate,
         altitude: Option<Altitude>, notes: Option<String>, is_deleted: bool, revision: Revision,
