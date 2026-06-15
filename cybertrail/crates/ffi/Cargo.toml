@@ -9,6 +9,7 @@ domain = { path = "../domain" }
 infrastructure = { path = "../infrastructure" }
 common = { path = "../common" }
 jni = "0.21"
+rusqlite.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }
