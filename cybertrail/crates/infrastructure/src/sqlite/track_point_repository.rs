@@ -123,7 +123,7 @@ impl TrackPointRepository for SqliteTrackPointRepository {
                     Altitude::new((cm as f64) / 100.0).unwrap_or_else(|_| Altitude::new(0.0).unwrap())
                 });
 
-                points.push(TrackPoint::new(tid.clone(), timestamp, coord, alt));
+                points.push(TrackPoint::new(tid, timestamp, coord, alt));
             }
 
             Ok(points)
