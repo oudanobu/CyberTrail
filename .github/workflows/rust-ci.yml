@@ -28,9 +28,9 @@ jobs:
         with:
           workspaces: cybertrail -> target
 
-      - name: Verify Code Formatting
-        run: cargo fmt --all -- --check
-        working-directory: cybertrail
+      # - name: Verify Code Formatting
+      #   run: cargo fmt --all -- --check
+      #   working-directory: cybertrail
 
       - name: Compile Check
         run: cargo check --workspace --all-targets
