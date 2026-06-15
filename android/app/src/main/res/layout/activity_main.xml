@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D1117"
+    android:padding="16dp">
+
+    <!-- Top Status / Branding Frame -->
+    <LinearLayout
+        android:id="@+id/brandFrame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#161B22"
+        android:padding="12dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/titleView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CyberTrail Tactical Core"
+            android:textColor="#58A6FF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-condensed" />
+
+        <TextView
+            android:id="@+id/subtitleView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SWISS MODERN OFFLINE HIKING SYSTEM"
+            android:textColor="#8B949E"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/dividerPrimary"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="#58A6FF"
+        app:layout_constraintTop_toBottomOf="@id/brandFrame"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Active Tracking Dashboard (Bento HUD) -->
+    <LinearLayout
+        android:id="@+id/hudPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#090D13"
+        android:padding="12dp"
+        android:layout_marginTop="12dp"
+        app:layout_constraintTop_toBottomOf="@id/dividerPrimary"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="[ACTIVE SATELLITE HUD]"
+            android:textColor="#388BFD"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Grid representing metrics -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="3">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="#161B22"
+                android:padding="8dp"
+                android:layout_marginEnd="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="POINTS"
+                    android:textColor="#8B949E"
+                    android:textSize="9sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvPoints"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#58A6FF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="#161B22"
+                android:padding="8dp"
+                android:layout_marginEnd="4dp"
+                android:layout_marginStart="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DISTANCE"
+                    android:textColor="#8B949E"
+                    android:textSize="9sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvDistance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.0m"
+                    android:textColor="#58A6FF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="#161B22"
+                android:padding="8dp"
+                android:layout_marginStart="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DURATION"
+                    android:textColor="#8B949E"
+                    android:textSize="9sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="#58A6FF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvTelemetryStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SYSTEM OFF-DUTY • GPS READY"
+            android:textColor="#238636"
+            android:textSize="10sp"
+            android:layout_marginTop="8dp"
+            android:layout_gravity="center"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/etTrackName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Enter Hike Name (e.g. Mt Whitney)"
+        android:textColorHint="#484F58"
+        android:textColor="#FFFFFF"
+        android:background="#161B22"
+        android:padding="12dp"
+        android:textSize="13sp"
+        android:layout_marginTop="12dp"
+        android:fontFamily="monospace"
+        app:layout_constraintTop_toBottomOf="@id/hudPanel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Action Buttons Panel -->
+    <LinearLayout
+        android:id="@+id/actionsPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        weightSum="2"
+        android:layout_marginTop="10dp"
+        app:layout_constraintTop_toBottomOf="@id/etTrackName"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/btnStartWalk"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Start Simulation"
+            android:textColor="#0D1117"
+            android:backgroundTint="#58A6FF"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/btnStopWalk"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Stop Recording"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#DA3633"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:enabled="false"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- Historical SQLite Records List -->
+    <LinearLayout
+        android:id="@+id/recordsHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="12dp"
+        app:layout_constraintTop_toBottomOf="@id/actionsPanel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="[SAVED CORES IN SQLITE]"
+            android:textColor="#58A6FF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/btnWipeLocal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WIPE SQL"
+            android:textColor="#DA3633"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:padding="4dp"
+            android:clickable="true"
+            android:focusable="true"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/historicalScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        app:layout_constraintTop_toBottomOf="@id/recordsHeader"
+        app:layout_constraintBottom_toTopOf="@id/bottomDiagnosticBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:id="@+id/tracksListContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <!-- Minimalistic Diagnostic Margin Panel -->
+    <LinearLayout
+        android:id="@+id/bottomDiagnosticBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="6dp"
+        android:background="#161B22"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/btnDiagnoseVersion"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="[QUERY CORE version]"
+            android:textColor="#8B949E"
+            android:textSize="10sp"
+            android:fontFamily="monospace"
+            android:gravity="start"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <TextView
+            android:id="@+id/btnDiagnoseHealth"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="[DIAGNOSE health]"
+            android:textColor="#8B949E"
+            android:textSize="10sp"
+            android:fontFamily="monospace"
+            android:gravity="end"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

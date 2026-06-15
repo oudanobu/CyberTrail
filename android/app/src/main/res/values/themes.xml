@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.CyberTrail" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#0D1117</item>
+        <item name="colorPrimaryVariant">#161B22</item>
+        <item name="colorOnPrimary">#58A6FF</item>
+        <item name="colorSecondary">#58A6FF</item>
+        <item name="colorOnSecondary">#0D1117</item>
+        <item name="android:statusBarColor">#0D1117</item>
+    </style>
+</resources>

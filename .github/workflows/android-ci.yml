@@ -1,0 +1,59 @@
+name: Android and Rust Integration CI
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Rust FFI & Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Android NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cybertrail -> target
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk || true
+
+      - name: Compile Rust FFI Library
+        run: |
+          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p ../android/app/src/main/jniLibs/x86_64
+          cargo ndk -t arm64-v8a -t x86_64 -o ../android/app/src/main/jniLibs build --package ffi --release
+        working-directory: cybertrail
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper
+        working-directory: android
+
+      - name: Build Android App Package (APK)
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
