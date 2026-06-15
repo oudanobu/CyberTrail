@@ -2,7 +2,6 @@ use uuid::Uuid;
 use crate::dto::waypoint_dto::{CoordinateDto, WaypointIdDto};
 use async_trait::async_trait;
 use crate::errors::application_error::ApplicationError;
-use crate::ports::repository_interfaces::WaypointRepository;
 
 pub struct CreateWaypointCommand {
     pub track_id: Option<Uuid>,

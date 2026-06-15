@@ -2,7 +2,6 @@ use uuid::Uuid;
 use crate::dto::track_dto::{TrackPointDto, TrackIdDto};
 use async_trait::async_trait;
 use crate::errors::application_error::ApplicationError;
-use crate::ports::repository_interfaces::TrackRepository;
 
 pub struct CreateTrackCommand {
     pub name: String,
