@@ -56,7 +56,7 @@ impl FileFormat {
             return Err(CryptoError::InvalidFileFormat("File too short".to_string()));
         }
         
-        if &raw_bytes[0..4] != &MAGIC {
+        if raw_bytes[0..4] != MAGIC {
             return Err(CryptoError::InvalidFileFormat("Invalid MAGIC".to_string()));
         }
         

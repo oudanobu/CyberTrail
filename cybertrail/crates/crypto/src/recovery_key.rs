@@ -15,7 +15,7 @@ impl RecoveryKey {
         
         // Compute checksum (first 4 bytes of SHA256)
         let mut hasher = Sha256::new();
-        hasher.update(&raw);
+        hasher.update(raw);
         let hash = hasher.finalize();
         
         let mut combined = Vec::with_capacity(20);
