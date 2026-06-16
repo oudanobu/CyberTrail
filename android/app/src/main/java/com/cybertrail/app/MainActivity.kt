@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity() {
             val emptyTextView = TextView(this).apply {
                 text = "NO LOCAL TRAILS RECORDED IN SQLITE YET"
                 setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                textSize = 10spToPx()
+                textSize = 10f.spToPx()
                 gravity = android.view.Gravity.CENTER
                 setPadding(0, 48, 0, 48)
                 typeface = android.graphics.Typeface.MONOSPACE

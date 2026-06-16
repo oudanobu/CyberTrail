@@ -144,7 +144,7 @@ class TrackingService : Service(), LocationListener {
         currentTrackId = null
         publishState()
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopForeground(true)
         stopSelf()
     }
 

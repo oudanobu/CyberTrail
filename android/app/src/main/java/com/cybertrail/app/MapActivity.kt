@@ -82,7 +82,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         // 1. Initialize MapLibre before rendering view (required)
         try {
-            Mapbox.getInstance(this, null)
+            Mapbox.getInstance(this)
             Log.i(TAG, "MapLibre Mapbox SDK engine instance initialized.")
         } catch (e: Exception) {
             Log.e(TAG, "Error initiating core MapLibre hardware bindings", e)
@@ -501,10 +501,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val latMin = bounds.latSouth
-                val latMax = bounds.latNorth
-                val lonMin = bounds.lonWest
-                val lonMax = bounds.lonEast
+                val latMin = bounds.getLatSouth()
+                val latMax = bounds.getLatNorth()
+                val lonMin = bounds.getLonWest()
+                val lonMax = bounds.getLonEast()
 
                 val steps = 12
                 val latStep = (latMax - latMin) / steps
