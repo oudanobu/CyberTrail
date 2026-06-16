@@ -1,8 +1,8 @@
-name: CyberTrail CI + APK Release
+name: CyberTrail Stable CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -16,75 +16,104 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # -------------------------
-      # Java
-      # -------------------------
+      # -------------------
+      # JDK
+      # -------------------
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # -------------------------
+      # -------------------
       # Android SDK
-      # -------------------------
-      - name: Setup Android SDK
+      # -------------------
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      # -------------------------
-      # Rust
-      # -------------------------
+      # -------------------
+      # Rust toolchain
+      # -------------------
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
-      - name: Cache Rust
+      # ❗ FIX 1: Rust cache 指定路径
+      - name: Rust Cache (fixed path)
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cybertrail -> target
 
-      # -------------------------
-      # Fix Gradle Wrapper (关键)
-      # -------------------------
-      - name: Validate Gradle Wrapper
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew --version
-
-      # -------------------------
-      # Build Rust FFI
-      # -------------------------
-      - name: Build Rust
+      # -------------------
+      # Build Rust FFI (FIX PATH)
+      # -------------------
+      - name: Build Rust FFI
         run: |
           cargo install cargo-ndk || true
+          cd cybertrail
           cargo ndk -t arm64-v8a -t x86_64 \
-            -o android/app/src/main/jniLibs \
-            build --package ffi --release
+            -o ../android/app/src/main/jniLibs \
+            build --release
 
-      # -------------------------
+      # -------------------
+      # VERIFY & SELF-HEAL GRADLE WRAPPER (关键修复点)
+      # -------------------
+      - name: Verify Gradle Wrapper
+        run: |
+          cd android
+          chmod +x gradlew || true
+          ls -la gradle/wrapper/ || true
+          file gradle/wrapper/gradle-wrapper.jar || true
+          
+          if ! ./gradlew --version; then
+            echo "⚠️ Gradle Wrapper runs into standard check failure (corrupted jar or configuration)."
+            echo "🔧 Launching Gradle Wrapper self-healing system..."
+            gradle wrapper --gradle-version 8.4
+            chmod +x gradlew
+            ./gradlew --version
+          else
+            echo "✅ Gradle Wrapper verified successfully."
+          fi
+
+      # -------------------
       # Build APK
-      # -------------------------
+      # -------------------
       - name: Build APK
         run: |
           cd android
           ./gradlew clean assembleDebug --no-daemon
 
-      # -------------------------
-      # Find APK
-      # -------------------------
-      - name: Locate APK
+      # -------------------
+      # Locate APK (Standardized Path with Robust Fallback)
+      # -------------------
+      - name: Find APK
         id: apk
         run: |
-          echo "apk_path=$(find android -name '*.apk' | head -n 1)" >> $GITHUB_OUTPUT
+          STANDARD_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$STANDARD_PATH" ]; then
+            echo "✅ Found APK at standardized path: $STANDARD_PATH"
+            echo "apk=$STANDARD_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Standard APK path not found! Using fallback search..."
+            FALLBACK_PATH=$(find android -name '*.apk' | head -n 1)
+            if [ -n "$FALLBACK_PATH" ]; then
+              echo "🎯 Found fallback APK: $FALLBACK_PATH"
+              echo "apk=$FALLBACK_PATH" >> $GITHUB_OUTPUT
+            else
+              echo "❌ No APK found in the output directories!"
+              exit 1
+            fi
+          fi
 
-      # -------------------------
-      # Release APK (核心)
-      # -------------------------
-      - name: Upload Release APK
+      # -------------------
+      # Release APK
+      # -------------------
+      - name: Release APK
         uses: ncipollo/release-action@v1
         with:
           tag: nightly-${{ github.run_number }}
-          name: CyberTrail Nightly Build
-          artifacts: ${{ steps.apk.outputs.apk_path }}
-          allowUpdates: true
+          name: CyberTrail Nightly
+          artifacts: ${{ steps.apk.outputs.apk }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
