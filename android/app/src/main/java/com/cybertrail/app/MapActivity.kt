@@ -47,12 +47,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var tvMapAltitude: TextView
     private lateinit var tvMapPoints: TextView
     private lateinit var btnToggleHistorical: Button
+    private lateinit var btnToggleSlope: Button
     private lateinit var btnSimulateOfflinePoint: Button
 
-    // Telemetry state
+    // Telemetry and GIS DEM states
+    private lateinit var demSystem: com.cybertrail.app.gis.DEMSystem
     private var currentPosition = LatLng(37.7749, -122.4194)
     private var currentAltitude = 120.0
     private var isHistoricalVisible = true
+    private var isSlopeVisible = true
 
     // Active track coordinate cache (Kotlin side cache)
     private val activeTrackPoints = ArrayList<LatLng>()
@@ -69,6 +72,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         
         private const val HISTORY_TRACK_SOURCE = "hist-track-source"
         private const val HISTORY_TRACK_LAYER = "hist-track-layer"
+
+        private const val SLOPE_SOURCE = "slope-source"
+        private const val SLOPE_LAYER = "slope-layer"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,13 +96,19 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         tvMapAltitude = findViewById(R.id.tvMapAltitude)
         tvMapPoints = findViewById(R.id.tvMapPoints)
         btnToggleHistorical = findViewById(R.id.btnToggleHistorical)
+        btnToggleSlope = findViewById(R.id.btnToggleSlope)
         btnSimulateOfflinePoint = findViewById(R.id.btnSimulateOfflinePoint)
+
+        demSystem = com.cybertrail.app.gis.DEMSystem(this)
 
         mapView.onCreate(savedInstanceState)
         mapView.getMapAsync(this)
 
-        // 2. Initialize native MBTiles custom Resource Transform callback
-        setupMBTilesResourceTransform()
+        // 2. Initiate one-time offline static filesystem pre-unpacking and 3D DEM building
+        lifecycleScope.launch(Dispatchers.IO) {
+            extractOfflineMBTiles()
+            demSystem.pregenerateTerrainRGBFiles()
+        }
 
         // 3. UI Buttons
         findViewById<TextView>(R.id.btnBack).setOnClickListener {
@@ -120,6 +132,11 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             updateHistoryVisibility()
         }
 
+        btnToggleSlope.setOnClickListener {
+            isSlopeVisible = !isSlopeVisible
+            updateSlopeVisibility()
+        }
+
         // Press simulate to step dynamic simulated points on-the-fly
         btnSimulateOfflinePoint.setOnClickListener {
             triggerOfflinePositionMock()
@@ -137,28 +154,47 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         this.mapboxMap = map
         Log.i(TAG, "MapLibre offline tactical canvas is compiled and ready.")
 
-        // Configure default offline parameters and map style directly using offline Style JSON raw string
+        val tilesFileDir = File(filesDir, "tiles")
+        val tilesPathPattern = "file://${tilesFileDir.absolutePath}/{z}/{x}/{y}.png"
+        val demFileDir = File(filesDir, "dem")
+        val demPathPattern = "file://${demFileDir.absolutePath}/{z}/{x}/{y}.png"
+
+        // Configure default offline map layer stack, 3D terrain parameters, and raster-dem sources
         val styleJsonStr = """
             {
               "version": 8,
-              "name": "CyberTrail Offline Style",
+              "name": "CyberTrail Offline 3D Style",
               "sources": {
                 "offline-radar": {
                   "type": "raster",
                   "tiles": [
-                    "mbtiles://{z}/{x}/{y}.png"
+                    "$tilesPathPattern"
                   ],
                   "tileSize": 256,
                   "minzoom": 0,
                   "maxzoom": 18
+                },
+                "terrain-rgb": {
+                  "type": "raster-dem",
+                  "tiles": [
+                    "$demPathPattern"
+                  ],
+                  "tileSize": 256,
+                  "encoding": "mapbox",
+                  "minzoom": 0,
+                  "maxzoom": 18
                 }
+              },
+              "terrain": {
+                "source": "terrain-rgb",
+                "exaggeration": 1.2
               },
               "layers": [
                 {
                   "id": "background",
                   "type": "background",
                   "paint": {
-                    "background-color": "#0D1117"
+                    "background-color": "#06090E"
                   }
                 },
                 {
@@ -166,7 +202,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
                   "type": "raster",
                   "source": "offline-radar",
                   "paint": {
-                    "raster-opacity": 1.0,
+                    "raster-opacity": 0.8,
                     "raster-fade-duration": 100
                   }
                 }
@@ -184,7 +220,20 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
                 isAttributionEnabled = false
             }
 
-            // A. Add Historical track overlay Source & Layer (Stroked solid ice-blue)
+            // A. Slope Heatmap overlay (polygon grid mesh) Layer, inserted under tracks
+            val slopeSource = GeoJsonSource(SLOPE_SOURCE, FeatureCollection.fromFeatures(emptyArray()))
+            style.addSource(slopeSource)
+            
+            val slopeLayer = com.mapbox.mapboxsdk.style.layers.FillLayer(SLOPE_LAYER, SLOPE_SOURCE).apply {
+                setProperties(
+                    PropertyFactory.fillColor(com.mapbox.mapboxsdk.style.expressions.Expression.get("color")),
+                    PropertyFactory.fillOpacity(0.35f),
+                    PropertyFactory.fillAntialias(true)
+                )
+            }
+            style.addLayer(slopeLayer)
+
+            // B. Add Historical track overlay Source & Layer (Stroked solid ice-blue)
             val historySource = GeoJsonSource(HISTORY_TRACK_SOURCE, FeatureCollection.fromFeatures(emptyArray()))
             style.addSource(historySource)
             
@@ -199,7 +248,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             }
             style.addLayer(historyLayer)
 
-            // B. Add Current raw recording route Source & Layer (Stroked high-contrast neon-orange)
+            // C. Add Current raw recording route Source & Layer (Stroked high-contrast neon-orange)
             val activeSource = GeoJsonSource(CURRENT_TRACK_SOURCE, FeatureCollection.fromFeatures(emptyArray()))
             style.addSource(activeSource)
             
@@ -213,7 +262,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             }
             style.addLayer(activeLayer)
 
-            // C. Add Custom live position GPS beacon marker Layer (solid concentric red-pulse circles)
+            // D. Add Custom live position GPS beacon marker Layer (solid concentric red-pulse circles)
             val posSource = GeoJsonSource(POSITION_SOURCE, FeatureCollection.fromFeatures(emptyArray()))
             style.addSource(posSource)
             
@@ -230,14 +279,22 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             // Initial center camera position
             centerMapOnCurrent()
 
-            // D. Load existing trails from SQLite DB in background thread
+            // E. Load existing trails from SQLite DB in background thread
             loadHistoricalTrailsOnMap(style)
 
-            // E. Handle developer click coordinates to mock offline positions!
+            // F. Handle developer click coordinates to mock offline positions!
             map.addOnMapClickListener { latLng ->
                 mockPositionTo(latLng)
                 true
             }
+
+            // G. Trigger real-time slope calculations in current bounds when camera stops moving
+            map.addOnCameraIdleListener {
+                regenerateSlopeHeatmap()
+            }
+            
+            // Trigger initial grid calculation
+            regenerateSlopeHeatmap()
         }
     }
 
@@ -403,11 +460,93 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         )
         
         val modeStr = if (isHistoricalVisible) "SHOWN" else "HIDDEN"
-        btnToggleHistorical.text = "ARCHIVE ROUTES: $modeStr"
+        btnToggleHistorical.text = "SHOW ARCHIVE"
         btnToggleHistorical.setBackgroundColor(
             if (isHistoricalVisible) 0xFF238636.toInt() else 0xFF21262D.toInt()
         )
         Toast.makeText(this, "Historical curves set to: $modeStr", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateSlopeVisibility() {
+        val map = mapboxMap ?: return
+        val style = map.style ?: return
+        val layer = style.getLayer(SLOPE_LAYER) ?: return
+        
+        layer.setProperties(
+            PropertyFactory.visibility(
+                if (isSlopeVisible) com.mapbox.mapboxsdk.style.layers.Property.VISIBLE 
+                else com.mapbox.mapboxsdk.style.layers.Property.NONE
+            )
+        )
+        
+        val modeStr = if (isSlopeVisible) "SLOPE: ON" else "SLOPE: OFF"
+        btnToggleSlope.text = modeStr
+        btnToggleSlope.setBackgroundColor(
+            if (isSlopeVisible) 0xFF2E7D32.toInt() else 0xFF21262D.toInt()
+        )
+        Toast.makeText(this, "High-precision slope heatmaps: $modeStr", Toast.LENGTH_SHORT).show()
+        
+        if (isSlopeVisible) {
+            regenerateSlopeHeatmap()
+        }
+    }
+
+    private fun regenerateSlopeHeatmap() {
+        val map = mapboxMap ?: return
+        val style = map.style ?: return
+        if (!isSlopeVisible) return
+
+        val projection = map.projection
+        val bounds = projection.visibleRegion?.latLngBounds ?: return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val latMin = bounds.latSouth
+                val latMax = bounds.latNorth
+                val lonMin = bounds.lonWest
+                val lonMax = bounds.lonEast
+
+                val steps = 12
+                val latStep = (latMax - latMin) / steps
+                val lonStep = (lonMax - lonMin) / steps
+
+                val features = ArrayList<Feature>()
+
+                for (r in 0 until steps) {
+                    for (c in 0 until steps) {
+                        val cellLatMin = latMin + r * latStep
+                        val cellLatMax = latMin + (r + 1) * latStep
+                        val cellLonMin = lonMin + c * lonStep
+                        val cellLonMax = lonMin + (c + 1) * lonStep
+
+                        val centerLat = cellLatMin + latStep / 2.0
+                        val centerLon = cellLonMin + lonStep / 2.0
+
+                        val slope = demSystem.getSlope(centerLat, centerLon)
+                        val colorHex = demSystem.getSlopeColorHex(slope)
+
+                        val outerRing = ArrayList<Point>()
+                        outerRing.add(Point.fromLngLat(cellLonMin, cellLatMin))
+                        outerRing.add(Point.fromLngLat(cellLonMax, cellLatMin))
+                        outerRing.add(Point.fromLngLat(cellLonMax, cellLatMax))
+                        outerRing.add(Point.fromLngLat(cellLonMin, cellLatMax))
+                        outerRing.add(Point.fromLngLat(cellLonMin, cellLatMin))
+
+                        val polygon = com.mapbox.geojson.Polygon.fromLngLats(listOf(outerRing))
+                        val feature = Feature.fromGeometry(polygon)
+                        feature.addStringProperty("color", colorHex)
+                        features.add(feature)
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    val source = style.getSourceAs<GeoJsonSource>(SLOPE_SOURCE)
+                    source?.setGeoJson(FeatureCollection.fromFeatures(features))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed calculating dynamic slope overlay grid", e)
+            }
+        }
     }
 
     private fun triggerOfflinePositionMock() {
@@ -515,69 +654,91 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onDestroy()
     }
 
-    private fun setupMBTilesResourceTransform() {
+    private fun extractOfflineMBTiles() {
+        val mbtilesFile = File(filesDir, "offline.mbtiles")
+        val targetDir = File(filesDir, "tiles")
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+        }
+
+        // If no mbtiles file exists, we seed high-contrast fallback tactical grids so the UI works beautifully instantly
+        if (!mbtilesFile.exists()) {
+            Log.i(TAG, "No offline.mbtiles database found. Seeding tactical grid overlays.")
+            pregenerateFallbackMapTiles(targetDir)
+            return
+        }
+
+        // Use a flag file to prevent redundant extractions on every boot
+        val flagFile = File(targetDir, ".extracted")
+        if (flagFile.exists()) {
+            Log.i(TAG, "MBTiles already pre-unpacked in standard folder. Skipping extraction.")
+            return
+        }
+
+        Log.i(TAG, "Extracting offline MBTiles to standard tile filesystem: ${targetDir.absolutePath}")
+        var db: SQLiteDatabase? = null
         try {
-            val fileSource = FileSource.getInstance(this)
-            fileSource.setResourceTransform { type, url ->
-                if (url != null && url.startsWith("mbtiles://")) {
-                    Log.d(TAG, "Intercepted mbtiles URI: $url")
-                    try {
-                        val path = url.substring("mbtiles://".length)
-                        val parts = path.split("/").filter { it.isNotEmpty() }
-                        if (parts.size >= 3) {
-                            val z = parts[0].toInt()
-                            val x = parts[1].toInt()
-                            val yRaw = parts[2].substringBefore(".").toInt()
+            db = SQLiteDatabase.openDatabase(
+                mbtilesFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
+            )
+            val cursor = db.rawQuery("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles", null)
+            while (cursor.moveToNext()) {
+                val z = cursor.getInt(0)
+                val x = cursor.getInt(1)
+                val yTms = cursor.getInt(2)
+                val data = cursor.getBlob(3) ?: continue
 
-                            // TMS Coordinate Inversion for standard MBTiles projection
-                            val yTms = (1 shl z) - 1 - yRaw
+                // Convert TMS row coordinate format to Standard OSM row format
+                val yStandard = (1 shl z) - 1 - yTms
 
-                            val mbtilesFile = File(filesDir, "offline.mbtiles")
-                            var tileBytes: ByteArray? = null
+                val zDir = File(targetDir, z.toString())
+                val xDir = File(zDir, x.toString())
+                if (!xDir.exists()) {
+                    xDir.mkdirs()
+                }
+                val tileFile = File(xDir, "$yStandard.png")
+                tileFile.writeBytes(data)
+            }
+            cursor.close()
+            flagFile.createNewFile()
+            Log.i(TAG, "Pre-unpacking complete. Extracted tiles are ready under standard file:/// paths.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to execute MBTiles pre-unpacking step", e)
+            // Seed anyway as fallback
+            pregenerateFallbackMapTiles(targetDir)
+        } finally {
+            db?.close()
+        }
+    }
 
-                            if (mbtilesFile.exists()) {
-                                try {
-                                    val db = SQLiteDatabase.openDatabase(
-                                        mbtilesFile.absolutePath,
-                                        null,
-                                        SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
-                                    )
-                                    val cursor = db.rawQuery(
-                                        "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
-                                        arrayOf(z.toString(), x.toString(), yTms.toString())
-                                    )
-                                    if (cursor.moveToFirst()) {
-                                        tileBytes = cursor.getBlob(0)
-                                    }
-                                    cursor.close()
-                                    db.close()
-                                } catch (dbEx: Exception) {
-                                    Log.e(TAG, "Error querying .mbtiles database in resource transform", dbEx)
-                                }
-                            }
+    private fun pregenerateFallbackMapTiles(targetDir: File) {
+        try {
+            // Seed a high-density neighborhood around SF default coordinates (Z: 14, X: 2621, Y: 6328)
+            val z = 14
+            val xCenter = 2621
+            val yCenter = 6328
 
-                            // If tile is missing or database not found, generate the beautiful cybertrail wireframe grid tile
-                            if (tileBytes == null || tileBytes.isEmpty()) {
-                                tileBytes = generateGridTileBytes(z, x, yRaw)
-                            }
-
-                            val tileCacheDir = File(cacheDir, "mbtiles_cache")
-                            if (!tileCacheDir.exists()) {
-                                tileCacheDir.mkdirs()
-                            }
-                            val tileFile = File(tileCacheDir, "${z}_${x}_${yRaw}.png")
-                            tileFile.writeBytes(tileBytes)
-                            return@setResourceTransform "file://${tileFile.absolutePath}"
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error transforming mbtiles resource url: $url", e)
+            for (dx in -4..4) {
+                for (dy in -4..4) {
+                    val x = xCenter + dx
+                    val y = yCenter + dy
+                    val zDir = File(targetDir, z.toString())
+                    val xDir = File(zDir, x.toString())
+                    if (!xDir.exists()) {
+                        xDir.mkdirs()
+                    }
+                    val tileFile = File(xDir, "$y.png")
+                    if (!tileFile.exists()) {
+                        val bytes = generateGridTileBytes(z, x, y)
+                        tileFile.writeBytes(bytes)
                     }
                 }
-                url
             }
-            Log.i(TAG, "Natively registered MBTiles Resource Transform callback with MapLibre's FileSource Engine.")
+            Log.i(TAG, "Seeded beautiful backup wireframe grid layers successfully.")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize native MapLibre custom ResourceTransform protocol mapping", e)
+            Log.e(TAG, "Error seeding fallback tactical layers", e)
         }
     }
 
@@ -619,7 +780,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             strokeWidth = 0.75f
             style = android.graphics.Paint.Style.STROKE
         }
-        val frequency = 40.0
         val scaleX = x.toDouble() * 256.0
         val scaleY = y.toDouble() * 256.0
         for (radius in listOf(20f, 45f, 85f, 150f, 200f)) {

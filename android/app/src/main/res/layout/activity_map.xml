@@ -245,17 +245,29 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginTop="8dp"
-            android:weightSum="2">
+            android:weightSum="3">
 
             <Button
                 android:id="@+id/btnToggleHistorical"
                 android:layout_width="0dp"
                 android:layout_height="36dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="4dp"
-                android:text="SHOW ARCHIVE ROUTES"
-                android:textSize="8sp"
+                android:layout_marginEnd="2dp"
+                android:text="SHOW ARCHIVE"
+                android:textSize="7sp"
                 android:backgroundTint="#238636"
+                android:fontFamily="monospace"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnToggleSlope"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="2dp"
+                android:text="SLOPE: ON"
+                android:textSize="7sp"
+                android:backgroundTint="#2E7D32"
                 android:fontFamily="monospace"
                 android:textColor="#FFFFFF" />
 
@@ -264,9 +276,9 @@
                 android:layout_width="0dp"
                 android:layout_height="36dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
-                android:text="MOCK CURRENT GPS"
-                android:textSize="8sp"
+                android:layout_marginStart="2dp"
+                android:text="MOCK GPS"
+                android:textSize="7sp"
                 android:backgroundTint="#8A63D2"
                 android:fontFamily="monospace"
                 android:textColor="#FFFFFF" />

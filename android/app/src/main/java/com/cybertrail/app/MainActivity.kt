@@ -103,6 +103,11 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
+        findViewById<Button>(R.id.btnLaunchMap).setOnClickListener {
+            val intent = Intent(this, MapActivity::class.java)
+            startActivity(intent)
+        }
+
         // 4. Collect updates and subscribe UI to state changes
         lifecycleScope.launch {
             TrackingRepository.state.collect { state ->

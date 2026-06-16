@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
 import com.cybertrail.app.NativeCore
+import com.cybertrail.app.gis.DEMSystem
 import com.cybertrail.app.model.TrackingState
 import com.cybertrail.app.repository.TrackingRepository
 import com.cybertrail.app.util.NotificationHelper
@@ -24,6 +25,7 @@ class TrackingService : Service(), LocationListener {
     private var locationManager: LocationManager? = null
     private var isGpsActive = false
     private var simulationTimer: Timer? = null
+    private lateinit var demSystem: DEMSystem
 
     // Track simulated walkthrough properties
     private var simLatitude = 37.7749
@@ -53,6 +55,7 @@ class TrackingService : Service(), LocationListener {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         NotificationHelper.createNotificationChannel(this)
+        demSystem = DEMSystem(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -195,7 +198,7 @@ class TrackingService : Service(), LocationListener {
                 // Alter latitude and longitude slightly to simulate a hike path
                 simLatitude += 0.00012 + (Random().nextDouble() - 0.5) * 0.00003
                 simLongitude += 0.00008 + (Random().nextDouble() - 0.5) * 0.00003
-                simAltitude += (Random().nextDouble() - 0.5) * 1.2
+                simAltitude = demSystem.getElevation(simLatitude, simLongitude)
 
                 val timestamp = System.currentTimeMillis() / 1000
                 val lat = simLatitude
@@ -255,7 +258,12 @@ class TrackingService : Service(), LocationListener {
 
         val lat = location.latitude
         val lon = location.longitude
-        val alt = if (location.hasAltitude()) location.altitude else Double.NaN
+        val rawAlt = if (location.hasAltitude()) location.altitude else Double.NaN
+        val alt = if (!rawAlt.isNaN()) {
+            demSystem.getElevation(lat, lon) * 0.7 + rawAlt * 0.3
+        } else {
+            demSystem.getElevation(lat, lon)
+        }
         val timestamp = location.time / 1000
 
         val elapsedSec = (SystemClock.elapsedRealtime() - startTimeMillis) / 1000
