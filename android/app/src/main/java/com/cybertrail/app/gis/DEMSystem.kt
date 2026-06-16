@@ -6,14 +6,8 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
-/**
- * CyberTrail DEM (Digital Elevation Model) & Slope GIS Analytics Engine.
- * Fully offline, standalone, high-precision mathematical simulation with
- * direct hooks to high-fidelity GIS raw physical data sources (SRTM & GeoTIFF).
- */
 class DEMSystem(private val context: Context) {
 
-    // Real GIS Engines
     val demLoader = DEMLoader(context)
     val terrainAnalyzer = TerrainAnalyzer(context, demLoader, this)
     val slopeRenderer = SlopeRenderer()
@@ -21,7 +15,6 @@ class DEMSystem(private val context: Context) {
 
     init {
         try {
-            // Load and initialize offline SRTM and GeoTIFF files under context.filesDir/gis
             demLoader.scanAndLoadLocalGisFiles()
             Log.i(TAG, "DEMSystem fully synchronized with real offline GIS DEM assets.")
         } catch (e: Exception) {
@@ -32,15 +25,9 @@ class DEMSystem(private val context: Context) {
     companion object {
         private const val TAG = "DEMSystem"
         const val STANDARD_DEM_ZOOM = 14
-        
-        // Yosemite Sentinel Dome aesthetic terrain simulation formula parameters
         private const val GEO_SCALE_M = 111000.0 // approx meters per degree
     }
 
-    /**
-     * Yosemite-like topographic elevation formula.
-     * Computes continuous mathematical mountain modeling with sub-meter continuity.
-     */
     fun getSimulatedHeight(lat: Double, lon: Double): Double {
         val x = (lon + 122.4194) * GEO_SCALE_M
         val y = (lat - 37.7749) * GEO_SCALE_M
@@ -51,14 +38,9 @@ class DEMSystem(private val context: Context) {
         val h3 = Math.sin(x / 140.0) * Math.cos(y / 140.0) * 35.0
         val h4 = Math.sin(x / 40.0) * Math.cos(y / 40.0) * 8.0
         
-        // Standard base altitude offset to avoid sub-zero values
         return 650.0 + h1 + h2 + h3 + h4
     }
 
-    /**
-     * Mapbox Terrain-RGB encoding converter:
-     * Height = -10000 + ((R * 65536 + G * 256 + B) * 0.1)
-     */
     fun heightToRGB(heightMeters: Double): Int {
         val value = Math.round((heightMeters + 10000.0) * 10.0).toInt().coerceIn(0, 0xFFFFFF)
         val r = (value shr 16) and 0xFF
@@ -67,9 +49,6 @@ class DEMSystem(private val context: Context) {
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
-    /**
-     * Decodes Mapbox Terrain-RGB pixel colors directly back to continuous metric elevations.
-     */
     fun rgbToHeight(rgb: Int): Double {
         val r = (rgb UnionShl 16) and 0xFF
         val g = (rgb UnionShl 8) and 0xFF
@@ -81,9 +60,6 @@ class DEMSystem(private val context: Context) {
         return (this shr shift)
     }
 
-    /**
-     * Translates Web Mercator pixel index directly to absolute geospatial coordinate.
-     */
     fun tilePixelToLatLng(z: Int, tx: Int, ty: Int, px: Int, py: Int): Pair<Double, Double> {
         val size = 256.0
         val totalPixels = size * (1 shl z)
@@ -96,18 +72,12 @@ class DEMSystem(private val context: Context) {
         return Pair(lat, lng)
     }
 
-    /**
-     * High-precision Bilinear Interpolation sampler for continuous sub-pixel elevation lookups.
-     * Hooks to GIS loaded datasets, falls back to mathematical layout.
-     */
     fun getElevation(lat: Double, lon: Double): Double {
-        // First check our live GIS DEM sources
         val realElevation = demLoader.getElevation(lat, lon)
         if (realElevation != null) {
             return realElevation
         }
 
-        // Sim/analytical calculations as safe, continuous fallback
         val z = STANDARD_DEM_ZOOM
         val size = 256.0
         val totalTiles = 1 shl z
@@ -157,10 +127,8 @@ class DEMSystem(private val context: Context) {
             rPy -= 256
         }
         
-        // Fast direct analytical match (avoiding heavy File I/O for telemetry loop while matching fully)
         val (pixelLat, pixelLon) = tilePixelToLatLng(z, rTx, rTy, rPx, rPy)
         
-        // Prefer local high-precision loaded datasets if available
         val realPixelVal = demLoader.getElevation(pixelLat, pixelLon)
         if (realPixelVal != null) {
             return realPixelVal
@@ -168,27 +136,14 @@ class DEMSystem(private val context: Context) {
         return getSimulatedHeight(pixelLat, pixelLon)
     }
 
-    /**
-     * Computes Horn's gradient vector magnitude to return real local slope steepness in degrees.
-     */
     fun getSlope(lat: Double, lon: Double): Double {
         return terrainAnalyzer.analyzeLocation(lat, lon).slope
     }
 
-    /**
-     * Map tactile slope degrees to color hex classifications:
-     * - Green (0–10°): safe
-     * - Yellow (10–25°): cautious
-     * - Orange (25–40°): steep warning
-     * - Red (>40°): extreme risk alpine cliff
-     */
     fun getSlopeColorHex(slope: Double): String {
         return slopeRenderer.classifySlopeHex(slope)
     }
 
-    /**
-     * One-time pre-generation of standard Terrain-RGB tiles for MapLibre's native 3D WebGL pipeline context.
-     */
     fun pregenerateTerrainRGBFiles() {
         val demDir = File(context.filesDir, "dem")
         if (!demDir.exists()) {
@@ -203,13 +158,12 @@ class DEMSystem(private val context: Context) {
 
         Log.i(TAG, "Pre-building physical Mapbox Terrain-RGB tiles under: ${demDir.absolutePath}")
         try {
-            // Seed Yosemite bounds tile ranges at Z:14
             val z = 14
             val xCenter = 2621
             val yCenter = 6328
             
-            for (dx in -4..4) {
-                for (dy in -4..4) {
+            for (dx in -2..2) {
+                for (dy in -2..2) {
                     val x = xCenter + dx
                     val y = yCenter + dy
                     

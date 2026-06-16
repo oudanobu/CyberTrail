@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.cybertrail.app">
 
-    <!-- Permissions for Location and Foreground Services -->
+    <!-- Permissions for GPS, Offline Sensors and local Map cache -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -14,9 +13,9 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.CyberTrail"
-        android:hardwareAccelerated="true">
-        
+        android:theme="@style/Theme.CyberTrail">
+
+        <!-- Entry Main Diagnostic Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -26,24 +25,10 @@
             </intent-filter>
         </activity>
 
+        <!-- Offline Tactical Map Activity -->
         <activity
             android:name=".MapActivity"
-            android:label="CyberTrail Map"
-            android:exported="true"
-            android:theme="@style/Theme.CyberTrail">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <!-- Foreground Tracking Service -->
-        <service
-            android:name=".service.TrackingService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="location" />
+            android:exported="false" />
 
     </application>
-
 </manifest>

@@ -1,3 +1,9 @@
 <resources>
-    <string name="app_name">CyberTrail</string>
+    <string name="app_name">CyberTrail 离线战术导航</string>
+    <string name="title_diagnostic">CyberTrail 地形解测与底图诊断</string>
+    <string name="btn_start_map">启动战术地图底图</string>
+    <string name="gps_status">GPS锁定状态: </string>
+    <string name="gps_coordinates">当前经纬度: </string>
+    <string name="satellite_count">活跃卫星数: </string>
+    <string name="offline_mbtiles_status">离线底图包诊断</string>
 </resources>

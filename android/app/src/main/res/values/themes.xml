@@ -1,10 +1,11 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
     <style name="Theme.CyberTrail" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#0D1117</item>
-        <item name="colorPrimaryVariant">#161B22</item>
-        <item name="colorOnPrimary">#58A6FF</item>
-        <item name="colorSecondary">#58A6FF</item>
-        <item name="colorOnSecondary">#0D1117</item>
-        <item name="android:statusBarColor">#0D1117</item>
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/cyber_green</item>
+        <item name="colorPrimaryVariant">@color/cyber_slate</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">@color/cyber_slate</item>
     </style>
 </resources>
