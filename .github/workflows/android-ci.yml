@@ -2,61 +2,64 @@ name: CyberTrail Stable CI
 
 on:
   push:
-    branches: ["main"]
-  workflow_dispatch:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: Build Rust + Android APK (Stable Pipeline)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # =========================
+      # 1. Checkout
+      # =========================
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # -------------------
-      # Setup Version Constraints
-      # -------------------
-      - name: Set Unified VERSION
-        run: |
-          VERSION="cybertrail-v1.0.0-build.${{ github.run_number }}-$(date +%Y%m%d-%H%M)-$(echo ${{ github.sha }} | cut -c1-7)"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # -------------------
-      # JDK
-      # -------------------
-      - name: Setup JDK
-        uses: actions/setup-java@v4
+      # =========================
+      # 2. Java (Fixed)
+      # =========================
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
 
-      # -------------------
-      # Android SDK
-      # -------------------
-      - name: Setup Android
+      # =========================
+      # 3. Android SDK
+      # =========================
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # -------------------
-      # Rust toolchain
-      # -------------------
+      # =========================
+      # 4. Rust Toolchain
+      # =========================
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
-      # ❗ FIX 1: Rust cache 指定路径
-      - name: Rust Cache (fixed path)
+      # =========================
+      # 5. Rust Cache (SAFE)
+      # =========================
+      - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: cybertrail-core -> target
 
-      # -------------------
-      # Build Rust FFI (FIX PATH)
-      # -------------------
-      - name: Build Rust FFI
+      # =========================
+      # 6. Build Rust FFI
+      # =========================
+      - name: Build Rust FFI (Android)
         working-directory: cybertrail-core
         run: |
           cargo install cargo-ndk || true
@@ -64,48 +67,54 @@ jobs:
             -o ../android/app/src/main/jniLibs \
             build -p cybertrail-ffi --release
 
-      # -------------------
-      # Verify FFI build artifacts
-      # -------------------
-      - name: Verify FFI Output
-        run: |
-          ls -R android/app/src/main/jniLibs
-          file android/app/src/main/jniLibs/arm64-v8a/*.so
-
-      # -------------------
-      # VERIFY & SELF-HEAL GRADLE WRAPPER (关键修复点)
-      # -------------------
+      # =========================
+      # 7. Verify Gradle Wrapper
+      # =========================
       - name: Verify Gradle Wrapper
         working-directory: android
         run: |
-          chmod +x ./gradlew
-          ls -lah gradle/wrapper/
-          file gradle/wrapper/gradle-wrapper.jar || true
+          chmod +x gradlew
           ./gradlew --version
 
-      # -------------------
-      # Build APK
-      # -------------------
+      # =========================
+      # 8. Build APK (STRICT WRAPPER ONLY)
+      # =========================
       - name: Build APK
         working-directory: android
         run: |
           ./gradlew clean assembleDebug --no-daemon
 
-      # -------------------
-      # Rename APK with Unified Version
-      # -------------------
+      # =========================
+      # 9. Generate Version
+      # =========================
+      - name: Generate Version
+        run: |
+          VERSION="cybertrail-v1.0.${{ github.run_number }}-$(date +%Y%m%d-%H%M)-${{ github.sha }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      # =========================
+      # 10. Rename APK
+      # =========================
       - name: Rename APK
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk cybertrail-${{ env.VERSION }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             cybertrail-${VERSION}.apk
 
-      # -------------------
-      # Release APK
-      # -------------------
-      - name: Release APK
+      # =========================
+      # 11. Upload Artifact
+      # =========================
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cybertrail-apk
+          path: cybertrail-*.apk
+
+      # =========================
+      # 12. GitHub Release
+      # =========================
+      - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.VERSION }}
-          name: CyberTrail ${{ env.VERSION }}
           artifacts: cybertrail-*.apk
           token: ${{ secrets.GITHUB_TOKEN }}
-
