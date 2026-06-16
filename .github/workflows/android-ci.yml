@@ -73,6 +73,7 @@ jobs:
       - name: Verify Gradle Wrapper
         working-directory: android
         run: |
+          gradle wrapper --gradle-version 8.4
           chmod +x gradlew
           ./gradlew --version
 
