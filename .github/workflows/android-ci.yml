@@ -1,49 +1,90 @@
-name: Android CI
+name: CyberTrail CI + APK Release
 
 on:
   push:
-    branches: [ "main", "master", "develop" ]
-  pull_request:
-    branches: [ "main", "master", "develop" ]
+    branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
-    name: Build & Publish Nightly APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      # -------------------------
+      # Java
+      # -------------------------
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
+          distribution: temurin
+          java-version: 17
 
-      - name: Grant Execute Permission for Gradlew
-        run: chmod +x android/gradlew
+      # -------------------------
+      # Android SDK
+      # -------------------------
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Build Android App Package (APK)
-        run: ./gradlew assembleDebug --no-daemon
-        working-directory: android
+      # -------------------------
+      # Rust
+      # -------------------------
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
 
-      - name: Create Nightly Release and Upload APK
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      # -------------------------
+      # Fix Gradle Wrapper (关键)
+      # -------------------------
+      - name: Validate Gradle Wrapper
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --version
+
+      # -------------------------
+      # Build Rust FFI
+      # -------------------------
+      - name: Build Rust
+        run: |
+          cargo install cargo-ndk || true
+          cargo ndk -t arm64-v8a -t x86_64 \
+            -o android/app/src/main/jniLibs \
+            build --package ffi --release
+
+      # -------------------------
+      # Build APK
+      # -------------------------
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew clean assembleDebug --no-daemon
+
+      # -------------------------
+      # Find APK
+      # -------------------------
+      - name: Locate APK
+        id: apk
+        run: |
+          echo "apk_path=$(find android -name '*.apk' | head -n 1)" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # Release APK (核心)
+      # -------------------------
+      - name: Upload Release APK
         uses: ncipollo/release-action@v1
         with:
-          tag: nightly
-          name: "Nightly Release"
-          body: "Automatic nightly build of CyberTrail Offline Tactical Hiking System"
+          tag: nightly-${{ github.run_number }}
+          name: CyberTrail Nightly Build
+          artifacts: ${{ steps.apk.outputs.apk_path }}
           allowUpdates: true
-          removeArtifacts: true
-          artifacts: "android/app/build/outputs/apk/debug/app-debug.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
