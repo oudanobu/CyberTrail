@@ -1,6 +1,11 @@
 use tracking::Tracker;
 
 #[no_mangle]
+pub extern "C" fn cy_get_version() -> i32 {
+    1
+}
+
+#[no_mangle]
 pub extern "C" fn start_track() -> i64 {
     let tracker = Tracker::new();
     tracker.start()

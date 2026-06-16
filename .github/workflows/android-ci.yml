@@ -57,6 +57,14 @@ jobs:
             build -p cybertrail-ffi --release
 
       # -------------------
+      # Verify FFI build artifacts
+      # -------------------
+      - name: Verify FFI Output
+        run: |
+          ls -R android/app/src/main/jniLibs
+          file android/app/src/main/jniLibs/arm64-v8a/*.so
+
+      # -------------------
       # VERIFY & SELF-HEAL GRADLE WRAPPER (关键修复点)
       # -------------------
       - name: Verify Gradle Wrapper
@@ -109,11 +117,15 @@ jobs:
       # -------------------
       # Release APK
       # -------------------
+      - name: Generate Release Tag
+        id: tag
+        run: echo "tag=nightly-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
       - name: Release APK
         uses: ncipollo/release-action@v1
         with:
-          tag: nightly-${{ github.run_number }}
-          name: CyberTrail Nightly
+          tag: ${{ steps.tag.outputs.tag }}
+          name: CyberTrail Nightly ${{ steps.tag.outputs.tag }}
           artifacts: ${{ steps.apk.outputs.apk }}
           token: ${{ secrets.GITHUB_TOKEN }}
 

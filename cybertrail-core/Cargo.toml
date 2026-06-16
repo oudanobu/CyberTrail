@@ -1,16 +1,26 @@
 [workspace]
+resolver = "2"
+
 members = [
-    "crates/ffi",
-    "crates/tracking",
-    "crates/navigation",
-    "crates/sensors",
-    "crates/database",
-    "crates/crypto",
     "crates/common",
-    "crates/rendering"
+    "crates/crypto",
+    "crates/database",
+    "crates/ffi",
+    "crates/navigation",
+    "crates/rendering",
+    "crates/sensors",
+    "crates/tracking"
 ]
 
-resolver = "2"
+exclude = [
+    "crates/altitude",
+    "crates/application",
+    "crates/ar_anchor",
+    "crates/domain",
+    "crates/infrastructure",
+    "crates/search",
+    "crates/sync"
+]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
