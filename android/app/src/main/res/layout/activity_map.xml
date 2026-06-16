@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D1117">
+
+    <!-- MapLibre Map View taking full screen -->
+    <com.mapbox.mapboxsdk.maps.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Top Tactical Branding Overlay -->
+    <LinearLayout
+        android:id="@+id/topBrandingHUD"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#DF0D1117"
+        android:padding="12dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/mapTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CYBERTRAIL TACTICAL MAP"
+                android:textColor="#58A6FF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-condensed" />
+
+            <TextView
+                android:id="@+id/btnBack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="[EXIT HUDBAR]"
+                android:textColor="#DA3633"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:clickable="true"
+                android:focusable="true"/>
+        </RelativeLayout>
+
+        <TextView
+            android:id="@+id/mapSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="100% OFFLINE LOCAL MBTILES ENGINE SECURED"
+            android:textColor="#8B949E"
+            android:textSize="8sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/topDivider"
+        android:layout_width="match_parent"
+        android:layout_height="2sp"
+        android:background="#58A6FF"
+        app:layout_constraintTop_toBottomOf="@id/topBrandingHUD" />
+
+    <!-- Right Side Tactical Zoom Control Overlays -->
+    <LinearLayout
+        android:id="@+id/zoomControlsHUD"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginEnd="16dp"
+        android:gravity="center"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Center on position button -->
+        <ImageButton
+            android:id="@+id/btnCenterPosition"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="#DF161B22"
+            android:src="@android:drawable/ic_menu_mylocation"
+            android:tint="#58A6FF"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Locate Position" />
+
+        <!-- Zoom In button -->
+        <Button
+            android:id="@+id/btnZoomIn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="+"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:backgroundTint="#DF161B22"
+            android:layout_marginBottom="4dp" />
+
+        <!-- Zoom Out button -->
+        <Button
+            android:id="@+id/btnZoomOut"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="-"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:backgroundTint="#DF161B22" />
+    </LinearLayout>
+
+    <!-- Translucent Bottom HUD overlay displaying critical current metrics -->
+    <LinearLayout
+        android:id="@+id/bottomMetricsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#DF090D13"
+        android:padding="12dp"
+        android:layout_margin="12dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="[OFF-GRID NAVIGATION TELEMETRY]"
+            android:textColor="#388BFD"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:layout_marginBottom="6dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="3">
+
+            <!-- Latitude/Longitude coordinate metric -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.2"
+                android:orientation="vertical"
+                android:background="#161B22"
+                android:padding="6dp"
+                android:layout_marginEnd="3dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="COORDINATES"
+                    android:textColor="#8B949E"
+                    android:textSize="7sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvMapCoordinates"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="37.7749, -122.4194"
+                    android:textColor="#58A6FF"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <!-- Altitude metric -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="0.9"
+                android:orientation="vertical"
+                android:background="#161B22"
+                android:padding="6dp"
+                android:layout_marginEnd="3dp"
+                android:layout_marginStart="3dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ALTITUDE (BARO/GPS)"
+                    android:textColor="#8B949E"
+                    android:textSize="7sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvMapAltitude"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="120.0m"
+                    android:textColor="#58A6FF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+
+            <!-- Active speed / telemetry point counts -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="0.9"
+                android:orientation="vertical"
+                android:background="#161B22"
+                android:padding="6dp"
+                android:layout_marginStart="3dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="RECORDS SCANNED"
+                    android:textColor="#8B949E"
+                    android:textSize="7sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvMapPoints"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 pts"
+                    android:textColor="#58A6FF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Dynamic Control Toggle Buttons for Hiking Map options -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:weightSum="2">
+
+            <Button
+                android:id="@+id/btnToggleHistorical"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="SHOW ARCHIVE ROUTES"
+                android:textSize="8sp"
+                android:backgroundTint="#238636"
+                android:fontFamily="monospace"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnSimulateOfflinePoint"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="MOCK CURRENT GPS"
+                android:textSize="8sp"
+                android:backgroundTint="#8A63D2"
+                android:fontFamily="monospace"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

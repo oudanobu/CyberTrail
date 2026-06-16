@@ -26,6 +26,17 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".MapActivity"
+            android:label="CyberTrail Map"
+            android:exported="true"
+            android:theme="@style/Theme.CyberTrail">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Foreground Tracking Service -->
         <service
             android:name=".service.TrackingService"

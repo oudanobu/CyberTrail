@@ -34,7 +34,22 @@ import { CONSTITUTION_RULES, CRATE_NODES, CODE_TEMPLATES, generateMockPoints } f
 
 export default function App() {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<"explorer" | "graph" | "tracking" | "metrics" | "auditor">("explorer");
+  const [activeTab, setActiveTab] = useState<"explorer" | "graph" | "tracking" | "metrics" | "auditor" | "map">("explorer");
+
+  // Map HUD Simulation State
+  const [mapZoom, setMapZoom] = useState<number>(14);
+  const [mapCenter, setMapCenter] = useState<{lat: number, lng: number}>({lat: 37.7749, lng: -122.4194});
+  const [mapHistoryVisible, setMapHistoryVisible] = useState<boolean>(true);
+  const [mapActiveTrack, setMapActiveTrack] = useState<{lat: number, lng: number}[]>([
+    {lat: 37.7749, lng: -122.4194},
+  ]);
+  const [isMapRecording, setIsMapRecording] = useState<boolean>(false);
+  const [mapAltitude, setMapAltitude] = useState<number>(120.0);
+  const [tileServerLogs, setTileServerLogs] = useState<{time: string, type: string, message: string}[]>([
+    {time: "10:52:14", type: "INFO", message: "Offline tile server daemon boot initiated"},
+    {time: "10:52:15", type: "INFO", message: "Local socket binding on 127.0.0.1:8085 secured"},
+    {time: "10:52:15", type: "DEBUG", message: "Registered route [/style.json] [Access-Control-Allow-Origin: *]"}
+  ]);
 
   // Rule Explorer State
   const [selectedRule, setSelectedRule] = useState<RuleSection>(CONSTITUTION_RULES[0]);
@@ -356,6 +371,22 @@ export default function App() {
             <span>5. Neural Compiler Auditor</span>
             <span className="absolute -top-1 -right-1 bg-emerald-500 text-[8px] font-bold text-white px-1 py-0.5 rounded blink">
               GEMINI 3.5
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-map"
+            onClick={() => setActiveTab("map")}
+            className={`flex items-center space-x-2 px-5 py-3 text-sm font-medium border-b-2 transition-all font-mono relative ${
+              activeTab === "map"
+                ? "border-emerald-500 text-white bg-emerald-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
+            }`}
+          >
+            <Compass className="h-4 w-4 text-emerald-400" />
+            <span>6. Off-Grid Map HUD</span>
+            <span className="absolute -top-1 -right-1 bg-indigo-500 text-[8px] font-bold text-white px-1 py-0.5 rounded blink">
+              PHASE 2
             </span>
           </button>
         </div>
@@ -1180,6 +1211,306 @@ export default function App() {
 
                   </motion.div>
                 )}
+
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 6: OFFLINE MAP HUD SIMULATOR */}
+          {activeTab === "map" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-1 lg:grid-cols-12 gap-8"
+              id="offline-map-hud-view"
+            >
+              {/* Interactive SVG Radar Map Canvas Left */}
+              <div className="lg:col-span-8 flex flex-col space-y-4">
+                <div className="bg-[#161b22] border border-slate-800 rounded-xl p-6 shadow-xl relative overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-400 font-mono tracking-wider uppercase">MapLibre Offline Canvas Emulator</h3>
+                      <p className="text-[11px] text-slate-500 font-mono">Click anywhere inside the radar matrix to mock position or trace hikes</p>
+                    </div>
+                    <div className="flex items-center space-x-2 text-xs font-mono">
+                      <span className="text-slate-500">Zoom:</span>
+                      <span className="bg-slate-800 px-2 py-0.5 rounded text-emerald-400 font-bold">{mapZoom}x</span>
+                    </div>
+                  </div>
+
+                  {/* Fully reactive canvas styled graphic */}
+                  <div className="relative w-full aspect-square md:aspect-[16/10] bg-[#0d1117] border border-slate-800/80 rounded-lg overflow-hidden flex items-center justify-center">
+                    
+                    <svg
+                      className="absolute inset-0 w-full h-full cursor-crosshair select-none"
+                      viewBox="0 0 400 250"
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        
+                        // Map 400x250 back to GPS coordinates in bounding space
+                        const boundingLng = -122.4250 + (x / rect.width) * 0.0110;
+                        const boundingLat = 37.7800 - (y / rect.height) * 0.0080;
+                        
+                        const targetPt = { lat: boundingLat, lng: boundingLng };
+                        setMapCenter(targetPt);
+                        setMapAltitude((prev) => Math.max(80.0, prev + (Math.random() - 0.5) * 8.0));
+                        
+                        // If recording: append to path
+                        if (isMapRecording) {
+                          setMapActiveTrack((prev) => [...prev, targetPt]);
+                        }
+                        
+                        // Record server log of tile download
+                        const randomTileX = Math.floor(Math.random() * 200 + 9100);
+                        const randomTileY = Math.floor(Math.random() * 150 + 6100);
+                        const tmsY = Math.pow(2, mapZoom) - 1 - randomTileY;
+                        
+                        const logTime = new Date().toTimeString().split(' ')[0];
+                        setTileServerLogs((prev) => [
+                          ...prev,
+                          {
+                            time: logTime,
+                            type: "DEBUG",
+                            message: `Query resolved: Z:${mapZoom} X:${randomTileX} Y:${randomTileY} => TMS SQLite row ${tmsY} served (90ms)`
+                          }
+                        ].slice(-7));
+                      }}
+                    >
+                      {/* Grid Line patterns */}
+                      <g stroke="#1F6FEB" strokeWidth="0.25" opacity="0.3">
+                        <line x1="0" y1="25" x2="400" y2="25" />
+                        <line x1="0" y1="50" x2="400" y2="50" />
+                        <line x1="0" y1="75" x2="400" y2="75" />
+                        <line x1="0" y1="100" x2="400" y2="100" />
+                        <line x1="0" y1="125" x2="400" y2="125" />
+                        <line x1="0" y1="150" x2="400" y2="150" />
+                        <line x1="0" y1="175" x2="400" y2="175" />
+                        <line x1="0" y1="200" x2="400" y2="200" />
+                        <line x1="0" y1="225" x2="400" y2="225" />
+                        
+                        <line x1="40" y1="0" x2="40" y2="250" />
+                        <line x1="80" y1="0" x2="80" y2="250" />
+                        <line x1="120" y1="0" x2="120" y2="250" />
+                        <line x1="160" y1="0" x2="160" y2="250" />
+                        <line x1="200" y1="0" x2="200" y2="250" />
+                        <line x1="240" y1="0" x2="240" y2="250" />
+                        <line x1="280" y1="0" x2="280" y2="250" />
+                        <line x1="320" y1="0" x2="320" y2="250" />
+                        <line x1="360" y1="0" x2="360" y2="250" />
+                      </g>
+
+                      {/* Concentric laser rings (Tactical Topography contour simulation) */}
+                      <g fill="none" stroke="#238636" strokeWidth="0.5" opacity="0.15">
+                        <circle cx="200" cy="125" r="40" />
+                        <circle cx="200" cy="125" r="80" strokeWidth="0.75" />
+                        <circle cx="200" cy="125" r="120" />
+                        <circle cx="200" cy="125" r="170" />
+                        
+                        <circle cx="80" cy="60" r="30" />
+                        <circle cx="80" cy="60" r="50" />
+                        <circle cx="310" cy="180" r="25" />
+                        <circle cx="310" cy="180" r="45" />
+                      </g>
+
+                      {/* Render Historical paths in ice-blue (toggled by state) */}
+                      {mapHistoryVisible && (
+                        <g fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.75">
+                          {/* Trail A */}
+                          <polyline points="20,120 75,90 140,110 210,75 220,50" />
+                          <circle cx="20" cy="120" r="2.5" fill="#58a6ff" />
+                          <circle cx="220" cy="50" r="2.5" fill="#58a6ff" />
+
+                          {/* Trail B */}
+                          <polyline points="100,230 145,180 200,205 285,175 350,140" />
+                          <circle cx="100" cy="230" r="2.5" fill="#58a6ff" />
+                          <circle cx="350" cy="140" r="2.5" fill="#58a6ff" />
+                        </g>
+                      )}
+
+                      {/* Render Active path in neon warning orange */}
+                      <polyline
+                        fill="none"
+                        stroke="#ff7b72"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={mapActiveTrack.map((pt) => {
+                          const pxX = ((pt.lng - (-122.4250)) / 0.0110) * 400;
+                          const pxY = ((37.7800 - pt.lat) / 0.0080) * 250;
+                          return `${pxX.toFixed(1)},${pxY.toFixed(1)}`;
+                        }).join(" ")}
+                      />
+
+                      {/* Flashing current GPS core position beacon circle */}
+                      <g>
+                        {(() => {
+                          const beaconX = ((mapCenter.lng - (-122.4250)) / 0.0110) * 400;
+                          const beaconY = ((37.7800 - mapCenter.lat) / 0.0080) * 250;
+                          return (
+                            <>
+                              <circle cx={beaconX} cy={beaconY} r="7" fill="none" stroke="#DA3633" strokeWidth="1.5" className="animate-ping" style={{ transformOrigin: `${beaconX}px ${beaconY}px` }} />
+                              <circle cx={beaconX} cy={beaconY} r="4.5" fill="#DA3633" stroke="#FFFFFF" strokeWidth="1" />
+                            </>
+                          );
+                        })()}
+                      </g>
+                    </svg>
+
+                    {/* Reticle Overlayer indicators */}
+                    <div className="absolute top-4 left-4 font-mono text-[9px] text-[#238636] bg-[#0D1117]/85 border border-[#238636]/20 px-2 py-1 rounded">
+                      <span>RADAR GRID SCANNERS CONFIRMED</span>
+                    </div>
+
+                    <div className="absolute bottom-4 right-4 font-mono text-[9px] text-slate-500 bg-[#0D1117]/85 border border-slate-800 px-2 py-1 rounded flex items-center space-x-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      <span>OFFLINE LOCAL SOURCE</span>
+                    </div>
+                  </div>
+
+                  {/* Operational controls bottom bar */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                    <button
+                      onClick={() => {
+                        setMapHistoryVisible(!mapHistoryVisible);
+                        const logTime = new Date().toTimeString().split(' ')[0];
+                        setTileServerLogs((prev) => [
+                          ...prev,
+                          {
+                            time: logTime,
+                            type: "INFO",
+                            message: `SQLite query: Toggle historical tracks visible => ${!mapHistoryVisible}`
+                          }
+                        ].slice(-7));
+                      }}
+                      className={`font-mono text-xs p-2.5 rounded border transition-all ${
+                        mapHistoryVisible
+                          ? "bg-emerald-600/10 border-emerald-500 text-white"
+                          : "bg-slate-850 border-slate-800 text-slate-400"
+                      }`}
+                    >
+                      {mapHistoryVisible ? "Disable Historical Layer" : "Load Historical Trails"}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const newRecording = !isMapRecording;
+                        setIsMapRecording(newRecording);
+                        if (newRecording) {
+                          // start
+                          setMapActiveTrack([mapCenter]);
+                        }
+                        const logTime = new Date().toTimeString().split(' ')[0];
+                        setTileServerLogs((prev) => [
+                          ...prev,
+                          {
+                            time: logTime,
+                            type: "INFO",
+                            message: newRecording ? "Telemetry collection loop STARTED on FFI database" : "Telemetry writing halted. EndTrack state committed."
+                          }
+                        ].slice(-7));
+                      }}
+                      className={`font-mono text-xs p-2.5 rounded border transition-all font-bold ${
+                        isMapRecording
+                          ? "bg-[#ff7b72]/15 border-[#ff7b72] text-[#ff7b72] animate-pulse"
+                          : "bg-[#1f6feb]/15 border-[#1f6feb] text-[#c9d1d9]"
+                      }`}
+                    >
+                      {isMapRecording ? "HALT LIVE TRACKING" : "ENGAGE ACTIVE GPS RECORD"}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        // random mock step forward
+                        const stepLat = mapCenter.lat + 0.0006 + (Math.random() - 0.5) * 0.0002;
+                        const stepLng = mapCenter.lng + 0.0008 + (Math.random() - 0.5) * 0.0002;
+                        const nextStep = { lat: stepLat, lng: stepLng };
+                        setMapCenter(nextStep);
+                        setMapAltitude((prev) => Math.max(90.0, prev + (Math.random() - 0.5) * 10.0));
+                        if (isMapRecording) {
+                          setMapActiveTrack((prev) => [...prev, nextStep]);
+                        }
+                        const logTime = new Date().toTimeString().split(' ')[0];
+                        setTileServerLogs((prev) => [
+                          ...prev,
+                          {
+                            time: logTime,
+                            type: "DEBUG",
+                            message: `Simulated Step: Lat: ${stepLat.toFixed(5)}, lng: ${stepLng.toFixed(5)} written.`
+                          }
+                        ].slice(-7));
+                      }}
+                      className="font-mono text-xs p-2.5 rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
+                    >
+                      Mock Step Coordinate
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar: HUD navigation readouts and SQLite server logs right */}
+              <div className="lg:col-span-4 flex flex-col space-y-6">
+                
+                {/* HUD board diagnostics */}
+                <div className="bg-[#161b22] border border-slate-800 rounded-xl p-6">
+                  <span className="text-[10px] text-emerald-400 font-mono tracking-wider font-bold uppercase block bg-emerald-500/10 w-fit px-2 py-0.5 rounded mb-4">
+                    SYSTEM DASH TELEMETRY
+                  </span>
+                  
+                  <div className="space-y-4 font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block">COORDINATE MOCK</span>
+                      <div className="text-sm font-semibold text-white mt-0.5">{mapCenter.lat.toFixed(5)}°N , {Math.abs(mapCenter.lng).toFixed(5)}°W</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block">GPS ALTITUDE</span>
+                        <div className="text-sm font-semibold text-emerald-400 mt-0.5">{mapAltitude.toFixed(1)}m</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block">ACTIVE SEGMENTS</span>
+                        <div className="text-sm font-semibold text-white mt-0.5">{mapActiveTrack.length} points</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block">INTEGRATED INTERFACE</span>
+                      <div className="text-xs text-indigo-400 mt-1 uppercase">MapLibre SDK 10.2.0 + SQLite MBTiles</div>
+                    </div>
+
+                    <div className="border-t border-slate-800 pt-3 text-[10px] text-slate-400 font-sans leading-relaxed">
+                      All GIS features conform to our Swiss Modern offgrid constitution, guaranteeing zero internet reliance, zero API token leak vulnerabilities, and robust physical battery priority.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Local Tile Server terminal daemon lines */}
+                <div className="bg-[#0b0e14] border border-slate-800 rounded-xl p-5 flex-1 flex flex-col h-[280px]">
+                  <div className="flex items-center space-x-2 border-b border-slate-800 pb-2 mb-3">
+                    <Terminal className="h-3.5 w-3.5 text-indigo-400" />
+                    <span className="text-[10px] font-mono text-indigo-400 uppercase font-bold">Local GIS Tile Server Daemon Logs</span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-1.5 font-mono text-[10px] leading-relaxed scrolling">
+                    {tileServerLogs.map((log, idx) => (
+                      <div key={idx} className="flex items-start space-x-1 border-b border-slate-900/40 pb-1 hover:bg-slate-800/10">
+                        <span className="text-slate-500">[{log.time}]</span>
+                        <span className={`font-semibold shrink-0 px-1 rounded ${
+                          log.type === "DEBUG" ? "text-emerald-400 bg-emerald-500/5" : "text-indigo-400 bg-indigo-500/5"
+                        }`}>
+                          {log.type}
+                        </span>
+                        <span className="text-slate-300">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="text-[9px] text-slate-500 font-mono mt-2 text-right">
+                    Daemon listening actively on port :8085
+                  </div>
+                </div>
 
               </div>
             </motion.div>
