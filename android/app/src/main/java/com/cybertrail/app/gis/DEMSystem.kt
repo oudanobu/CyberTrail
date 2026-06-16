@@ -5,13 +5,29 @@ import android.graphics.Bitmap
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Random
 
 /**
  * CyberTrail DEM (Digital Elevation Model) & Slope GIS Analytics Engine.
- * Fully offline, standalone, high-precision mathematical mountain mesh simulation.
+ * Fully offline, standalone, high-precision mathematical simulation with
+ * direct hooks to high-fidelity GIS raw physical data sources (SRTM & GeoTIFF).
  */
 class DEMSystem(private val context: Context) {
+
+    // Real GIS Engines
+    val demLoader = DEMLoader(context)
+    val terrainAnalyzer = TerrainAnalyzer(context, demLoader, this)
+    val slopeRenderer = SlopeRenderer()
+    val hillshadeRenderer = HillshadeRenderer()
+
+    init {
+        try {
+            // Load and initialize offline SRTM and GeoTIFF files under context.filesDir/gis
+            demLoader.scanAndLoadLocalGisFiles()
+            Log.i(TAG, "DEMSystem fully synchronized with real offline GIS DEM assets.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing modular local GIS DEM subsystems", e)
+        }
+    }
 
     companion object {
         private const val TAG = "DEMSystem"
@@ -82,8 +98,16 @@ class DEMSystem(private val context: Context) {
 
     /**
      * High-precision Bilinear Interpolation sampler for continuous sub-pixel elevation lookups.
+     * Hooks to GIS loaded datasets, falls back to mathematical layout.
      */
     fun getElevation(lat: Double, lon: Double): Double {
+        // First check our live GIS DEM sources
+        val realElevation = demLoader.getElevation(lat, lon)
+        if (realElevation != null) {
+            return realElevation
+        }
+
+        // Sim/analytical calculations as safe, continuous fallback
         val z = STANDARD_DEM_ZOOM
         val size = 256.0
         val totalTiles = 1 shl z
@@ -135,6 +159,12 @@ class DEMSystem(private val context: Context) {
         
         // Fast direct analytical match (avoiding heavy File I/O for telemetry loop while matching fully)
         val (pixelLat, pixelLon) = tilePixelToLatLng(z, rTx, rTy, rPx, rPy)
+        
+        // Prefer local high-precision loaded datasets if available
+        val realPixelVal = demLoader.getElevation(pixelLat, pixelLon)
+        if (realPixelVal != null) {
+            return realPixelVal
+        }
         return getSimulatedHeight(pixelLat, pixelLon)
     }
 
@@ -142,18 +172,7 @@ class DEMSystem(private val context: Context) {
      * Computes Horn's gradient vector magnitude to return real local slope steepness in degrees.
      */
     fun getSlope(lat: Double, lon: Double): Double {
-        val latShift = 10.0 / GEO_SCALE_M
-        val lonShift = 10.0 / (GEO_SCALE_M * Math.cos(Math.toRadians(lat)))
-        
-        val hCenter = getElevation(lat, lon)
-        val hEast = getElevation(lat, lon + lonShift)
-        val hNorth = getElevation(lat + latShift, lon)
-        
-        val diffX = (hEast - hCenter) / 10.0
-        val diffY = (hNorth - hCenter) / 10.0
-        
-        val gradient = Math.sqrt(diffX * diffX + diffY * diffY)
-        return Math.toDegrees(Math.atan(gradient))
+        return terrainAnalyzer.analyzeLocation(lat, lon).slope
     }
 
     /**
@@ -164,12 +183,7 @@ class DEMSystem(private val context: Context) {
      * - Red (>40°): extreme risk alpine cliff
      */
     fun getSlopeColorHex(slope: Double): String {
-        return when {
-            slope < 10.0 -> "#442ECC71"  // semi-transparent tactical green
-            slope < 25.0 -> "#44F1C40F"  // yellow
-            slope < 40.0 -> "#44E67E22"  // orange
-            else -> "#44E74C3C"          // red
-        }
+        return slopeRenderer.classifySlopeHex(slope)
     }
 
     /**
@@ -210,7 +224,7 @@ class DEMSystem(private val context: Context) {
                         for (py in 0 until 256) {
                             for (px in 0 until 256) {
                                 val (lat, lon) = tilePixelToLatLng(z, x, y, px, py)
-                                val elevation = getSimulatedHeight(lat, lon)
+                                val elevation = getElevation(lat, lon)
                                 val rgbColor = heightToRGB(elevation)
                                 bitmap.setPixel(px, py, rgbColor)
                             }
