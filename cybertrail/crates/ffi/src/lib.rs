@@ -1,5 +1,5 @@
 use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jstring, jlong, jdouble, jint};
+use jni::sys::{jboolean, jstring, jlong, jdouble};
 use jni::JNIEnv;
 use once_cell::sync::OnceCell;
 use serde::Serialize;
@@ -14,6 +14,7 @@ use rusqlite::OptionalExtension;
 
 static DB_POOL: OnceCell<SqlitePool> = OnceCell::new();
 
+#[allow(dead_code)]
 fn get_runtime() -> &'static Runtime {
     static RUNTIME: OnceCell<Runtime> = OnceCell::new();
     RUNTIME.get_or_init(|| {
@@ -220,7 +221,7 @@ struct TrackPointJson {
 /// JNI bridge to retrieve cybertrail version from Java/Kotlin
 #[no_mangle]
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_getVersion<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
     let version = get_version();
@@ -405,7 +406,7 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_endTrack<'local>(
 /// JNI bridge to get all tracks as JSON string
 #[no_mangle]
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_getAllTracksJson<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
     let pool = match DB_POOL.get() {
@@ -455,10 +456,8 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_getAllTracksJson<'loca
 
     let mut list = Vec::new();
     if let Ok(rows) = track_rows {
-        for row in rows {
-            if let Ok(t) = row {
-                list.push(t);
-            }
+        for t in rows.flatten() {
+            list.push(t);
         }
     }
 
@@ -525,10 +524,8 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_getTrackPointsJson<'lo
 
     let mut list = Vec::new();
     if let Ok(rows) = pt_rows {
-        for row in rows {
-            if let Ok(t) = row {
-                list.push(t);
-            }
+        for t in rows.flatten() {
+            list.push(t);
         }
     }
 
