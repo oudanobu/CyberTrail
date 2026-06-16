@@ -79,3 +79,42 @@ jobs:
       - name: Verify Wrapper
         working-directory: android
         run: ./gradlew --version
+
+      # =========================
+      # 8. Build APK & Scan
+      # =========================
+      - name: Build APK
+        working-directory: android
+        run: |
+          ./gradlew clean assembleDebug --scan --no-daemon
+          
+      - name: Display APK Info
+        working-directory: android
+        run: |
+          echo "APK 路径: android/app/build/outputs/apk/debug/app-debug.apk"
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      # =========================
+      # 9. Generate Version
+      # =========================
+      - name: Generate Version
+        run: |
+          VERSION="cybertrail-v1.0.${{ github.run_number }}-$(date +%Y%m%d-%H%M)-${{ github.sha }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      # =========================
+      # 10. Rename APK
+      # =========================
+      - name: Rename APK
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             cybertrail-${VERSION}.apk
+
+      # =========================
+      # 11. Upload Artifact
+      # =========================
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cybertrail-apk
+          path: cybertrail-*.apk
