@@ -73,6 +73,9 @@ jobs:
       - name: Validate Gradle Wrapper
         working-directory: android
         run: |
+          ls -lh gradle/wrapper
+          file gradle/wrapper/gradle-wrapper.jar
+          unzip -l gradle/wrapper/gradle-wrapper.jar
           test -f gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
           ./gradlew --version
