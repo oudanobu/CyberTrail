@@ -17,6 +17,14 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------
+      # Setup Version Constraints
+      # -------------------
+      - name: Set Unified VERSION
+        run: |
+          VERSION="cybertrail-v1.0.0-build.${{ github.run_number }}-$(date +%Y%m%d-%H%M)-$(echo ${{ github.sha }} | cut -c1-7)"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      # -------------------
       # JDK
       # -------------------
       - name: Setup JDK
@@ -68,64 +76,36 @@ jobs:
       # VERIFY & SELF-HEAL GRADLE WRAPPER (关键修复点)
       # -------------------
       - name: Verify Gradle Wrapper
+        working-directory: android
         run: |
-          cd android
-          chmod +x gradlew || true
-          ls -la gradle/wrapper/ || true
+          chmod +x ./gradlew
+          ls -lah gradle/wrapper/
           file gradle/wrapper/gradle-wrapper.jar || true
-          
-          if ! ./gradlew --version; then
-            echo "⚠️ Gradle Wrapper runs into standard check failure (corrupted jar or configuration)."
-            echo "🔧 Launching Gradle Wrapper self-healing system..."
-            gradle wrapper --gradle-version 8.4
-            chmod +x gradlew
-            ./gradlew --version
-          else
-            echo "✅ Gradle Wrapper verified successfully."
-          fi
+          ./gradlew --version
 
       # -------------------
       # Build APK
       # -------------------
       - name: Build APK
+        working-directory: android
         run: |
-          cd android
           ./gradlew clean assembleDebug --no-daemon
 
       # -------------------
-      # Locate APK (Standardized Path with Robust Fallback)
+      # Rename APK with Unified Version
       # -------------------
-      - name: Find APK
-        id: apk
+      - name: Rename APK
         run: |
-          STANDARD_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
-          if [ -f "$STANDARD_PATH" ]; then
-            echo "✅ Found APK at standardized path: $STANDARD_PATH"
-            echo "apk=$STANDARD_PATH" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ Standard APK path not found! Using fallback search..."
-            FALLBACK_PATH=$(find android -name '*.apk' | head -n 1)
-            if [ -n "$FALLBACK_PATH" ]; then
-              echo "🎯 Found fallback APK: $FALLBACK_PATH"
-              echo "apk=$FALLBACK_PATH" >> $GITHUB_OUTPUT
-            else
-              echo "❌ No APK found in the output directories!"
-              exit 1
-            fi
-          fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk cybertrail-${{ env.VERSION }}.apk
 
       # -------------------
       # Release APK
       # -------------------
-      - name: Generate Release Tag
-        id: tag
-        run: echo "tag=nightly-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
-
       - name: Release APK
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.tag.outputs.tag }}
-          name: CyberTrail Nightly ${{ steps.tag.outputs.tag }}
-          artifacts: ${{ steps.apk.outputs.apk }}
+          tag: ${{ env.VERSION }}
+          name: CyberTrail ${{ env.VERSION }}
+          artifacts: cybertrail-*.apk
           token: ${{ secrets.GITHUB_TOKEN }}
 
