@@ -1,0 +1,11 @@
+[package]
+name = "cybertrail-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tracking = { path = "../tracking" }
+common = { path = "../common" }

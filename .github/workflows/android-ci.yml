@@ -43,18 +43,18 @@ jobs:
       - name: Rust Cache (fixed path)
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: cybertrail -> target
+          workspaces: cybertrail-core -> target
 
       # -------------------
       # Build Rust FFI (FIX PATH)
       # -------------------
       - name: Build Rust FFI
+        working-directory: cybertrail-core
         run: |
           cargo install cargo-ndk || true
-          cd cybertrail
           cargo ndk -t arm64-v8a -t x86_64 \
             -o ../android/app/src/main/jniLibs \
-            build --release
+            build -p cybertrail-ffi --release
 
       # -------------------
       # VERIFY & SELF-HEAL GRADLE WRAPPER (关键修复点)

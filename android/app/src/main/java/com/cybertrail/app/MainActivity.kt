@@ -26,6 +26,14 @@ class MainActivity : AppCompatActivity(), LocationListener {
     private lateinit var locationManager: LocationManager
     private var gnssStatusCallback: GnssStatus.Callback? = null
 
+    init {
+        try {
+            System.loadLibrary("cybertrail_ffi")
+        } catch (e: UnsatisfiedLinkError) {
+            e.printStackTrace()
+        }
+    }
+
     companion object {
         private const val PERMISSION_REQUEST_CODE = 42
     }
