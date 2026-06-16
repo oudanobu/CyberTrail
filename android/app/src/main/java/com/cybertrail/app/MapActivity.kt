@@ -47,7 +47,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         // MapLibre requires initialization
         try {
-            Mapbox.getInstance(this, null)
+            Mapbox.getInstance(this)
         } catch (e: Exception) {
             Log.e(TAG, "Mapbox instance init error", e)
         }
@@ -127,9 +127,11 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         // Bind camera change listener to query elevation at map center
         map.addOnCameraMoveListener {
             val center = map.cameraPosition.target
-            val lat = center.latitude
-            val lon = center.longitude
-            updateTerrainHud(lat, lon)
+            if (center != null) {
+                val lat = center.latitude
+                val lon = center.longitude
+                updateTerrainHud(lat, lon)
+            }
         }
     }
 
