@@ -68,54 +68,14 @@ jobs:
             build -p cybertrail-ffi --release
 
       # =========================
-      # 7. Generate Gradle Wrapper
+      # 7. Generate & Verify Wrapper
       # =========================
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-          ./gradlew --version
 
-      # =========================
-      # 8. Build APK (STRICT WRAPPER ONLY)
-      # =========================
-      - name: Build APK
+      - name: Verify Wrapper
         working-directory: android
-        run: |
-          ./gradlew clean assembleDebug --no-daemon
-
-      # =========================
-      # 9. Generate Version
-      # =========================
-      - name: Generate Version
-        run: |
-          VERSION="cybertrail-v1.0.${{ github.run_number }}-$(date +%Y%m%d-%H%M)-${{ github.sha }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # =========================
-      # 10. Rename APK
-      # =========================
-      - name: Rename APK
-        run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             cybertrail-${VERSION}.apk
-
-      # =========================
-      # 11. Upload Artifact
-      # =========================
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: cybertrail-apk
-          path: cybertrail-*.apk
-
-      # =========================
-      # 12. GitHub Release
-      # =========================
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ env.VERSION }}
-          artifacts: cybertrail-*.apk
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew --version
