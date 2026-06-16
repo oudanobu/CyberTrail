@@ -127,7 +127,8 @@ class TrackingService : Service(), LocationListener {
 
         // End track in Rust Core SQLite
         val nowSeconds = System.currentTimeMillis() / 1000
-        currentTrackId?.let { trackId ->
+        val trackId = currentTrackId
+        if (trackId != null) {
             try {
                 if (NativeCore.available) {
                     NativeCore.endTrack(trackId, nowSeconds)
