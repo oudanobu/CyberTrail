@@ -68,15 +68,12 @@ jobs:
             build -p cybertrail-ffi --release
 
       # =========================
-      # 7. Validate Gradle Wrapper
+      # 7. Generate Gradle Wrapper
       # =========================
-      - name: Validate Gradle Wrapper
+      - name: Generate Gradle Wrapper
         working-directory: android
         run: |
-          ls -lh gradle/wrapper
-          file gradle/wrapper/gradle-wrapper.jar
-          unzip -l gradle/wrapper/gradle-wrapper.jar
-          test -f gradle/wrapper/gradle-wrapper.jar
+          gradle wrapper --gradle-version 8.4
           chmod +x gradlew
           ./gradlew --version
 
