@@ -1,18 +1,22 @@
-package com.cybertrail.app
+package com.cybertrail.app.service
 
+import android.Manifest
 import android.annotation.SuppressLint
-import android.app.*
+import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
-import androidx.core.app.NotificationCompat
+import com.cybertrail.app.NativeCore
+import com.cybertrail.app.model.TrackingState
+import com.cybertrail.app.repository.TrackingRepository
+import com.cybertrail.app.util.NotificationHelper
 import java.util.*
 
 class TrackingService : Service(), LocationListener {
@@ -27,39 +31,28 @@ class TrackingService : Service(), LocationListener {
     private var simAltitude = 120.0
     private var startTimeMillis = 0L
 
+    // Keep instance states private
+    private var isTracking = false
+    private var isSimulating = false
+    private var currentTrackId: String? = null
+    private var currentTrackName = ""
+    private var pointsCount = 0
+    private var distanceMeters = 0.0
+    private var durationSeconds = 0L
+
     companion object {
         private const val TAG = "TrackingService"
-        const val CHANNEL_ID = "TrackingServiceChannel"
-        const val NOTIFICATION_ID = 505
 
         const val ACTION_START = "com.cybertrail.app.START"
         const val ACTION_STOP = "com.cybertrail.app.STOP"
         const val EXTRA_TRACK_NAME = "com.cybertrail.app.TRACK_NAME"
         const val EXTRA_SIMULATION = "com.cybertrail.app.SIMULATION"
-
-        // Exposed properties for direct UI observing
-        var isTracking = false
-            private set
-        var isSimulating = false
-            private set
-        var currentTrackId: String? = null
-            private set
-        var currentTrackName = ""
-            private set
-        var pointsCount = 0
-            private set
-        var distanceMeters = 0.0
-            private set
-        var durationSeconds = 0L
-            private set
-
-        var onUpdateListener: (() -> Unit)? = null
     }
 
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        createNotificationChannel()
+        NotificationHelper.createNotificationChannel(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -94,18 +87,22 @@ class TrackingService : Service(), LocationListener {
 
         val nowSeconds = System.currentTimeMillis() / 1000
         val trackId = try {
-            NativeCore.startTrack(name, nowSeconds)
+            if (NativeCore.available) {
+                NativeCore.startTrack(name, nowSeconds)
+            } else {
+                UUID.randomUUID().toString()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed startTrack FFI on core", e)
-            UUID.randomUUID().toString() // Fallback to safe random UUID on preview mock bounds
+            UUID.randomUUID().toString()
         }
         currentTrackId = trackId
 
         Log.i(TAG, "Started tracking session $trackId for name: $name")
 
-        // Start Foreground Service with notification
-        val notification = buildNotification("Initiating tactical GPS scan...")
-        startForeground(NOTIFICATION_ID, notification)
+        // Start Foreground Service with helper notification
+        val notification = NotificationHelper.buildNotification(this, "Initiating tactical GPS scan...")
+        startForeground(NotificationHelper.NOTIFICATION_ID, notification)
 
         if (useSimulation) {
             startSimulation()
@@ -113,7 +110,7 @@ class TrackingService : Service(), LocationListener {
             startGpsUpdates()
         }
 
-        updateUi()
+        publishState()
     }
 
     private fun stopTrackingSession() {
@@ -129,8 +126,10 @@ class TrackingService : Service(), LocationListener {
         val nowSeconds = System.currentTimeMillis() / 1000
         currentTrackId?.let { trackId ->
             try {
-                NativeCore.endTrack(trackId, nowSeconds)
-                Log.i(TAG, "Ended track session securely on core sqlite.")
+                if (NativeCore.available) {
+                    NativeCore.endTrack(trackId, nowSeconds)
+                    Log.i(TAG, "Ended track session securely on core sqlite.")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error ending track securely", e)
             }
@@ -140,14 +139,23 @@ class TrackingService : Service(), LocationListener {
         isTracking = false
         isSimulating = false
         currentTrackId = null
-        updateUi()
+        publishState()
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
+    private fun hasLocationPermission(): Boolean {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
     @SuppressLint("MissingPermission")
     private fun startGpsUpdates() {
+        if (!hasLocationPermission()) {
+            stopSelf()
+            return
+        }
+
         try {
             locationManager?.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
@@ -159,7 +167,6 @@ class TrackingService : Service(), LocationListener {
             Log.i(TAG, "Hardware location listener registered successfully.")
         } catch (e: Exception) {
             Log.w(TAG, "Could not hook location provider: ${e.message}. Falling back to simulation.", e)
-            // Fallback to simulation if GPS not permitted/mocking
             isSimulating = true
             startSimulation()
         }
@@ -173,8 +180,6 @@ class TrackingService : Service(), LocationListener {
     }
 
     private fun startSimulation() {
-        // Simple mock route walking simulation
-        // Generates updates every 3 seconds representing step shifts
         simLatitude = 37.7749
         simLongitude = -122.4194
         simAltitude = 120.0
@@ -188,10 +193,9 @@ class TrackingService : Service(), LocationListener {
                 durationSeconds = elapsedSec
 
                 // Alter latitude and longitude slightly to simulate a hike path
-                // Moving north-east gently
                 simLatitude += 0.00012 + (Random().nextDouble() - 0.5) * 0.00003
                 simLongitude += 0.00008 + (Random().nextDouble() - 0.5) * 0.00003
-                simAltitude += (Random().nextDouble() - 0.5) * 1.2 // Slight altitude ripple
+                simAltitude += (Random().nextDouble() - 0.5) * 1.2
 
                 val timestamp = System.currentTimeMillis() / 1000
                 val lat = simLatitude
@@ -200,7 +204,11 @@ class TrackingService : Service(), LocationListener {
 
                 currentTrackId?.let { trackId ->
                     val success = try {
-                        NativeCore.addTrackPoint(trackId, lat, lon, alt, timestamp)
+                        if (NativeCore.available) {
+                            NativeCore.addTrackPoint(trackId, lat, lon, alt, timestamp)
+                        } else {
+                            true
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "FFI error during addTrackPoint simulation", e)
                         true
@@ -209,11 +217,13 @@ class TrackingService : Service(), LocationListener {
                     if (success) {
                         pointsCount++
                         if (pointsCount > 1) {
-                            // Approximately 13m per step simulation
                             distanceMeters += 12.5 + Random().nextDouble() * 3.0
                         }
-                        updateNotification("Recorded $pointsCount points | Dist: %.1fm".format(distanceMeters))
-                        updateUi()
+                        NotificationHelper.updateNotification(
+                            this@TrackingService,
+                            "Recorded $pointsCount points | Dist: %.1fm".format(distanceMeters)
+                        )
+                        publishState()
                     }
                 }
             }
@@ -223,6 +233,19 @@ class TrackingService : Service(), LocationListener {
     private fun stopSimulation() {
         simulationTimer?.cancel()
         simulationTimer = null
+    }
+
+    private fun publishState() {
+        TrackingRepository.update(
+            TrackingState(
+                isTracking = isTracking,
+                isSimulating = isSimulating,
+                trackName = currentTrackName,
+                points = pointsCount,
+                distanceMeters = distanceMeters,
+                durationSeconds = durationSeconds
+            )
+        )
     }
 
     // --- LocationListener Callbacks ---
@@ -240,7 +263,11 @@ class TrackingService : Service(), LocationListener {
 
         currentTrackId?.let { trackId ->
             val success = try {
-                NativeCore.addTrackPoint(trackId, lat, lon, alt, timestamp)
+                if (NativeCore.available) {
+                    NativeCore.addTrackPoint(trackId, lat, lon, alt, timestamp)
+                } else {
+                    true
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "FFI call error adding GPS trackpoint", e)
                 true
@@ -248,10 +275,12 @@ class TrackingService : Service(), LocationListener {
 
             if (success) {
                 pointsCount++
-                // Calculate distance / update stats metrics
                 Log.i(TAG, "Successfully saved hardware location coordinate index: $pointsCount")
-                updateNotification("Live tracking active: $pointsCount telemetry coordinates logged.")
-                updateUi()
+                NotificationHelper.updateNotification(
+                    this,
+                    "Live tracking active: $pointsCount telemetry coordinates logged."
+                )
+                publishState()
             }
         }
     }
@@ -259,48 +288,6 @@ class TrackingService : Service(), LocationListener {
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
     override fun onProviderEnabled(provider: String) {}
     override fun onProviderDisabled(provider: String) {}
-
-    // --- Notification Helpers ---
-
-    private fun buildNotification(contentText: String): Notification {
-        val pendingIntent = Intent(this, MainActivity::class.java).let { notificationIntent ->
-            PendingIntent.getActivity(
-                this, 0, notificationIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("CyberTrail GPS Logging Active")
-            .setContentText(contentText)
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentIntent(pendingIntent)
-            .setColor(0x58A6FF)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun updateNotification(contentText: String) {
-        val notification = buildNotification(contentText)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "CyberTrail Tracking Channel",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
-        }
-    }
-
-    private fun updateUi() {
-        onUpdateListener?.invoke()
-    }
 
     override fun onDestroy() {
         stopTrackingSession()

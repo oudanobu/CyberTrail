@@ -5,12 +5,20 @@ import android.util.Log
 object NativeCore {
     private const val TAG = "NativeCore"
 
+    var available = false
+        private set
+
     init {
         try {
             System.loadLibrary("ffi")
+            available = true
             Log.i(TAG, "Native library 'libffi.so' successfully loaded.")
         } catch (e: UnsatisfiedLinkError) {
+            available = false
             Log.w(TAG, "Warning: libffi.so could not be loaded; falling back to mock layers.", e)
+        } catch (e: Exception) {
+            available = false
+            Log.w(TAG, "Exception loading library", e)
         }
     }
 

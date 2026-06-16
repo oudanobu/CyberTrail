@@ -1,19 +1,20 @@
 package com.cybertrail.app
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.cybertrail.app.model.TrackingState
+import com.cybertrail.app.repository.TrackingRepository
+import com.cybertrail.app.service.TrackingService
+import com.cybertrail.app.util.PermissionHelper
+import kotlinx.coroutines.launch
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -42,19 +43,23 @@ class MainActivity : AppCompatActivity() {
         tracksListContainer = findViewById(R.id.tracksListContainer)
 
         // 1. Initialize SQLite Database path via Rust JNI FFI
-        val dbPath = File(filesDir, "cybertrail.db").absolutePath
-        try {
-            val inited = NativeCore.initDatabase(dbPath)
-            if (inited) {
-                Log.i("MainActivity", "Rust Local SQLite initialized at: $dbPath")
-            } else {
-                Log.w("MainActivity", "Rust core database initialization reported non-success.")
+        if (!NativeCore.available) {
+            showNativeCoreUnavailable()
+        } else {
+            val dbPath = File(filesDir, "cybertrail.db").absolutePath
+            try {
+                val inited = NativeCore.initDatabase(dbPath)
+                if (inited) {
+                    Log.i("MainActivity", "Rust Local SQLite initialized at: $dbPath")
+                } else {
+                    Log.w("MainActivity", "Rust core database initialization reported non-success.")
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                Log.w("MainActivity", "FFI Bindings unavailable in desktop sandbox preview mode.")
             }
-        } catch (e: UnsatisfiedLinkError) {
-            Log.w("MainActivity", "FFI Bindings unavailable in desktop sandbox preview mode.")
         }
 
-        // 2. Request Android Native GPS / Notification Permissions
+        // 2. Request Android Native ACCESS_FINE_LOCATION and POST_NOTIFICATIONS
         requestRequiredPermissions()
 
         // 3. UI Buttons Listeners
@@ -73,7 +78,11 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.btnDiagnoseVersion).setOnClickListener {
             val ver = try {
-                NativeCore.getVersion()
+                if (NativeCore.available) {
+                    NativeCore.getVersion()
+                } else {
+                    "CyberTrail Core 0.1.0"
+                }
             } catch (e: UnsatisfiedLinkError) {
                 "CyberTrail Core 0.1.0"
             }
@@ -82,7 +91,11 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.btnDiagnoseHealth).setOnClickListener {
             val healthOk = try {
-                NativeCore.healthCheck()
+                if (NativeCore.available) {
+                    NativeCore.healthCheck()
+                } else {
+                    true
+                }
             } catch (e: UnsatisfiedLinkError) {
                 true
             }
@@ -90,31 +103,31 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
-        // 4. Register Foreground Service Update Hook
-        TrackingService.onUpdateListener = {
-            runOnUiThread {
-                updateActiveHud()
+        // 4. Collect updates and subscribe UI to state changes
+        lifecycleScope.launch {
+            TrackingRepository.state.collect { state ->
+                renderState(state)
             }
         }
 
-        // Initial loading of tracks List and screen layout sync
-        updateActiveHud()
+        // Initial loading of tracks List
         loadHistoricalTracks()
     }
 
     override fun onResume() {
         super.onResume()
-        updateActiveHud()
+        // Ensure UI displays current state and reloads historical tracks
+        renderState(TrackingRepository.state.value)
         loadHistoricalTracks()
     }
 
-    private fun updateActiveHud() {
-        val tracking = TrackingService.isTracking
-        val sim = TrackingService.isSimulating
+    private fun renderState(state: TrackingState) {
+        val tracking = state.isTracking
+        val sim = state.isSimulating
 
-        tvPoints.text = TrackingService.pointsCount.toString()
-        tvDistance.text = "%.1fm".format(TrackingService.distanceMeters)
-        tvDuration.text = formatDuration(TrackingService.durationSeconds)
+        tvPoints.text = state.points.toString()
+        tvDistance.text = "%.1fm".format(state.distanceMeters)
+        tvDuration.text = formatDuration(state.durationSeconds)
 
         if (tracking) {
             btnStartWalk.isEnabled = false
@@ -144,14 +157,8 @@ class MainActivity : AppCompatActivity() {
             putExtra(TrackingService.EXTRA_SIMULATION, true) // Default to simulated walk loop
         }
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-
+        startForegroundService(serviceIntent)
         Toast.makeText(this, "Tactical Hike '$trackName' Started", Toast.LENGTH_SHORT).show()
-        updateActiveHud()
     }
 
     private fun stopTrackingService() {
@@ -160,20 +167,19 @@ class MainActivity : AppCompatActivity() {
         }
         startService(serviceIntent)
         Toast.makeText(this, "Tactical Hike Recording Stopped & Saved", Toast.LENGTH_SHORT).show()
-        updateActiveHud()
     }
 
     private fun loadHistoricalTracks() {
         tracksListContainer.removeAllViews()
 
         val jsonStr = try {
-            NativeCore.getAllTracksJson()
+            if (NativeCore.available) {
+                NativeCore.getAllTracksJson()
+            } else {
+                getMockTracksJson()
+            }
         } catch (e: UnsatisfiedLinkError) {
-            // Emulated sandbox preview dynamic fallback list
-            """[
-              {"id":"preview-1","name":"Sentinel Dome Walk","started_at":1729000000,"duration_seconds":300,"distance_m":245.5,"ascent_m":12.5,"descent_m":11.2,"points_count":100},
-              {"id":"preview-2","name":"Tuolumne Meadows Loop","started_at":1728950000,"duration_seconds":150,"distance_m":142.1,"ascent_m":4.0,"descent_m":3.5,"points_count":50}
-            ]"""
+            getMockTracksJson()
         }
 
         if (jsonStr.isNullOrBlank() || jsonStr == "[]") {
@@ -233,9 +239,13 @@ class MainActivity : AppCompatActivity() {
                     setImageResource(android.R.drawable.ic_menu_delete)
                     setOnClickListener {
                         try {
-                            NativeCore.deleteTrack(id)
-                            Toast.makeText(this@MainActivity, "Track deleted from SQLite", Toast.LENGTH_SHORT).show()
-                            loadHistoricalTracks()
+                            if (NativeCore.available) {
+                                NativeCore.deleteTrack(id)
+                                Toast.makeText(this@MainActivity, "Track deleted from SQLite", Toast.LENGTH_SHORT).show()
+                                loadHistoricalTracks()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Cannot delete mockup data", Toast.LENGTH_SHORT).show()
+                            }
                         } catch (e: UnsatisfiedLinkError) {
                             Toast.makeText(this@MainActivity, "Cannot delete mockup data", Toast.LENGTH_SHORT).show()
                         }
@@ -269,13 +279,17 @@ class MainActivity : AppCompatActivity() {
                 // Set on click card to show toast breakdown details
                 cardView.setOnClickListener {
                     try {
-                        val pointsJson = NativeCore.getTrackPointsJson(id)
-                        val ptsArray = JSONArray(pointsJson)
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Track ID: ${id.take(8)}... has ${ptsArray.length()} raw coordinates in DB.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        if (NativeCore.available) {
+                            val pointsJson = NativeCore.getTrackPointsJson(id)
+                            val ptsArray = JSONArray(pointsJson)
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Track ID: ${id.take(8)}... has ${ptsArray.length()} raw coordinates in DB.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Toast.makeText(this@MainActivity, "Hike ID: $id selected.", Toast.LENGTH_SHORT).show()
+                        }
                     } catch (e: Exception) {
                         Toast.makeText(this@MainActivity, "Hike ID: $id selected.", Toast.LENGTH_SHORT).show()
                     }
@@ -288,18 +302,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getMockTracksJson(): String {
+        return """[
+          {"id":"preview-1","name":"Sentinel Dome Walk","started_at":1729000000,"duration_seconds":300,"distance_m":245.5,"ascent_m":12.5,"descent_m":11.2,"points_count":100},
+          {"id":"preview-2","name":"Tuolumne Meadows Loop","started_at":1728950000,"duration_seconds":150,"distance_m":142.1,"ascent_m":4.0,"descent_m":3.5,"points_count":50}
+        ]"""
+    }
+
+    private fun showNativeCoreUnavailable() {
+        Toast.makeText(this, "Native Core libffi.so is unavailable. Running in simulation mode.", Toast.LENGTH_LONG).show()
+    }
+
     private fun wipeDatabaseTracks() {
         val dbFile = File(filesDir, "cybertrail.db")
         if (dbFile.exists()) {
-            TrackingService.isTracking.let { active ->
-                if (active) {
-                    Toast.makeText(this, "Cannot wipe DB while telemetry scan is running!", Toast.LENGTH_LONG).show()
-                    return
-                }
+            val isTrackingActive = TrackingRepository.state.value.isTracking
+            if (isTrackingActive) {
+                Toast.makeText(this, "Cannot wipe DB while telemetry scan is running!", Toast.LENGTH_LONG).show()
+                return
             }
             dbFile.delete()
             Toast.makeText(this, "Local SQLite databases deleted. Reopening app to re-instantiate.", Toast.LENGTH_LONG).show()
-            NativeCore.initDatabase(dbFile.absolutePath)
+            try {
+                if (NativeCore.available) {
+                    NativeCore.initDatabase(dbFile.absolutePath)
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                Log.w("MainActivity", "FFI Bindings unavailable in desktop sandbox preview mode.")
+            }
             loadHistoricalTracks()
         } else {
             Toast.makeText(this, "Database file is empty or missing.", Toast.LENGTH_SHORT).show()
@@ -318,15 +348,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestRequiredPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        val missing = permissions.filter {
+        val missing = PermissionHelper.permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 

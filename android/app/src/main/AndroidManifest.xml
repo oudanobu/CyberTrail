@@ -28,7 +28,7 @@
 
         <!-- Foreground Tracking Service -->
         <service
-            android:name=".TrackingService"
+            android:name=".service.TrackingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
