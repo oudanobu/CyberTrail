@@ -248,10 +248,9 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_healthCheck<'local>(
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_initDatabase<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    db_path_jstring: jstring,
+    db_path: JString<'local>,
 ) -> jboolean {
-    let db_path_jstr = JString::from(db_path_jstring);
-    let db_path: String = match env.get_string(&db_path_jstr) {
+    let db_path: String = match env.get_string(&db_path) {
         Ok(s) => s.into(),
         Err(_) => return 0,
     };
@@ -282,11 +281,10 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_initDatabase<'local>(
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_startTrack<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    name_jstring: jstring,
+    name: JString<'local>,
     started_at: jlong,
 ) -> jstring {
-    let name_jstr = JString::from(name_jstring);
-    let name: String = match env.get_string(&name_jstr) {
+    let name: String = match env.get_string(&name) {
         Ok(s) => s.into(),
         Err(_) => return std::ptr::null_mut(),
     };
@@ -351,14 +349,13 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_startTrack<'local>(
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_addTrackPoint<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    track_id_jstring: jstring,
+    track_id: JString<'local>,
     latitude: jdouble,
     longitude: jdouble,
     altitude: jdouble,
     timestamp: jlong,
 ) -> jboolean {
-    let track_id_jstr = JString::from(track_id_jstring);
-    let track_id_str: String = match env.get_string(&track_id_jstr) {
+    let track_id_str: String = match env.get_string(&track_id) {
         Ok(s) => s.into(),
         Err(_) => return 0,
     };
@@ -376,11 +373,10 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_addTrackPoint<'local>(
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_endTrack<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    track_id_jstring: jstring,
+    track_id: JString<'local>,
     ended_at: jlong,
 ) -> jboolean {
-    let track_id_jstr = JString::from(track_id_jstring);
-    let track_id_str: String = match env.get_string(&track_id_jstr) {
+    let track_id_str: String = match env.get_string(&track_id) {
         Ok(s) => s.into(),
         Err(_) => return 0,
     };
@@ -482,10 +478,9 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_getAllTracksJson<'loca
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_getTrackPointsJson<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    track_id_jstring: jstring,
+    track_id: JString<'local>,
 ) -> jstring {
-    let track_id_jstr = JString::from(track_id_jstring);
-    let track_id_str: String = match env.get_string(&track_id_jstr) {
+    let track_id_str: String = match env.get_string(&track_id) {
         Ok(s) => s.into(),
         Err(_) => return std::ptr::null_mut(),
     };
@@ -553,10 +548,9 @@ pub extern "system" fn Java_com_cybertrail_app_NativeCore_getTrackPointsJson<'lo
 pub extern "system" fn Java_com_cybertrail_app_NativeCore_deleteTrack<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
-    track_id_jstring: jstring,
+    track_id: JString<'local>,
 ) -> jboolean {
-    let track_id_jstr = JString::from(track_id_jstring);
-    let track_id_str: String = match env.get_string(&track_id_jstr) {
+    let track_id_str: String = match env.get_string(&track_id) {
         Ok(s) => s.into(),
         Err(_) => return 0,
     };
