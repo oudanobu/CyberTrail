@@ -1,6 +1,7 @@
 package com.cybertrail.app
 
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -23,6 +24,7 @@ import com.mapbox.mapboxsdk.geometry.LatLng
 import com.mapbox.mapboxsdk.maps.MapView
 import com.mapbox.mapboxsdk.maps.MapboxMap
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback
+import com.mapbox.mapboxsdk.storage.FileSource
 import com.mapbox.mapboxsdk.style.layers.CircleLayer
 import com.mapbox.mapboxsdk.style.layers.LineLayer
 import com.mapbox.mapboxsdk.style.layers.PropertyFactory
@@ -39,7 +41,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var mapView: MapView
     private var mapboxMap: MapboxMap? = null
-    private var tileServer: OfflineTileServer? = null
 
     // UI elements
     private lateinit var tvMapCoordinates: TextView
@@ -94,11 +95,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         mapView.onCreate(savedInstanceState)
         mapView.getMapAsync(this)
 
-        // 2. Start offline local tile server on port 8085
-        val mbtilesFile = File(filesDir, "offline.mbtiles")
-        tileServer = OfflineTileServer(mbtilesFile).apply {
-            start()
-        }
+        // 2. Initialize native MBTiles custom Resource Transform callback
+        setupMBTilesResourceTransform()
 
         // 3. UI Buttons
         findViewById<TextView>(R.id.btnBack).setOnClickListener {
@@ -139,8 +137,44 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         this.mapboxMap = map
         Log.i(TAG, "MapLibre offline tactical canvas is compiled and ready.")
 
-        // Configure default offline parameters and map style from our local daemon tile server
-        map.setStyle("http://127.0.5.1:8085/style.json") { style ->
+        // Configure default offline parameters and map style directly using offline Style JSON raw string
+        val styleJsonStr = """
+            {
+              "version": 8,
+              "name": "CyberTrail Offline Style",
+              "sources": {
+                "offline-radar": {
+                  "type": "raster",
+                  "tiles": [
+                    "mbtiles://{z}/{x}/{y}.png"
+                  ],
+                  "tileSize": 256,
+                  "minzoom": 0,
+                  "maxzoom": 18
+                }
+              },
+              "layers": [
+                {
+                  "id": "background",
+                  "type": "background",
+                  "paint": {
+                    "background-color": "#0D1117"
+                  }
+                },
+                {
+                  "id": "offline-tiles",
+                  "type": "raster",
+                  "source": "offline-radar",
+                  "paint": {
+                    "raster-opacity": 1.0,
+                    "raster-fade-duration": 100
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        map.setStyle(styleJsonStr) { style ->
             Log.i(TAG, "TileServer stylesheet config parsed. Mounting vector layers.")
 
             // Setup Tactical map configurations
@@ -478,7 +512,136 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onDestroy() {
         mapView.onDestroy()
-        tileServer?.stop()
         super.onDestroy()
+    }
+
+    private fun setupMBTilesResourceTransform() {
+        try {
+            val fileSource = FileSource.getInstance(this)
+            fileSource.setResourceTransform { type, url ->
+                if (url != null && url.startsWith("mbtiles://")) {
+                    Log.d(TAG, "Intercepted mbtiles URI: $url")
+                    try {
+                        val path = url.substring("mbtiles://".length)
+                        val parts = path.split("/").filter { it.isNotEmpty() }
+                        if (parts.size >= 3) {
+                            val z = parts[0].toInt()
+                            val x = parts[1].toInt()
+                            val yRaw = parts[2].substringBefore(".").toInt()
+
+                            // TMS Coordinate Inversion for standard MBTiles projection
+                            val yTms = (1 shl z) - 1 - yRaw
+
+                            val mbtilesFile = File(filesDir, "offline.mbtiles")
+                            var tileBytes: ByteArray? = null
+
+                            if (mbtilesFile.exists()) {
+                                try {
+                                    val db = SQLiteDatabase.openDatabase(
+                                        mbtilesFile.absolutePath,
+                                        null,
+                                        SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
+                                    )
+                                    val cursor = db.rawQuery(
+                                        "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                                        arrayOf(z.toString(), x.toString(), yTms.toString())
+                                    )
+                                    if (cursor.moveToFirst()) {
+                                        tileBytes = cursor.getBlob(0)
+                                    }
+                                    cursor.close()
+                                    db.close()
+                                } catch (dbEx: Exception) {
+                                    Log.e(TAG, "Error querying .mbtiles database in resource transform", dbEx)
+                                }
+                            }
+
+                            // If tile is missing or database not found, generate the beautiful cybertrail wireframe grid tile
+                            if (tileBytes == null || tileBytes.isEmpty()) {
+                                tileBytes = generateGridTileBytes(z, x, yRaw)
+                            }
+
+                            val tileCacheDir = File(cacheDir, "mbtiles_cache")
+                            if (!tileCacheDir.exists()) {
+                                tileCacheDir.mkdirs()
+                            }
+                            val tileFile = File(tileCacheDir, "${z}_${x}_${yRaw}.png")
+                            tileFile.writeBytes(tileBytes)
+                            return@setResourceTransform "file://${tileFile.absolutePath}"
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error transforming mbtiles resource url: $url", e)
+                    }
+                }
+                url
+            }
+            Log.i(TAG, "Natively registered MBTiles Resource Transform callback with MapLibre's FileSource Engine.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize native MapLibre custom ResourceTransform protocol mapping", e)
+        }
+    }
+
+    private fun generateGridTileBytes(z: Int, x: Int, y: Int): ByteArray {
+        val bitmap = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        
+        // Cyberpunk Dark Background
+        canvas.drawColor(0xFF0D1117.toInt())
+
+        // Aesthetic cyan border representing tile bounds
+        val borderPaint = android.graphics.Paint().apply {
+            color = 0x221F6FEB.toInt() // dark tactical blue-gray borders
+            strokeWidth = 1.0f
+            style = android.graphics.Paint.Style.STROKE
+        }
+        canvas.drawRect(0f, 0f, 256f, 256f, borderPaint)
+
+        // Dynamic grid laser lines
+        val gridPaint = android.graphics.Paint().apply {
+            color = 0x1158A6FF.toInt() // semi-opaque HUD cyan
+            strokeWidth = 0.5f
+        }
+        canvas.drawLine(128f, 0f, 128f, 256f, gridPaint)
+        canvas.drawLine(0f, 128f, 256f, 128f, gridPaint)
+
+        // Dynamic laser radar circles
+        val circlePaint = android.graphics.Paint().apply {
+            color = 0x15238636.toInt() // tech cyber green rings
+            strokeWidth = 1.0f
+            style = android.graphics.Paint.Style.STROKE
+        }
+        canvas.drawCircle(128f, 128f, 64f, circlePaint)
+        canvas.drawCircle(128f, 128f, 120f, circlePaint)
+
+        // Contour laser waves simulating contour topography patterns
+        val contourPaint = android.graphics.Paint().apply {
+            color = 0x0C238636.toInt() // extremely subtle topographic waves
+            strokeWidth = 0.75f
+            style = android.graphics.Paint.Style.STROKE
+        }
+        val frequency = 40.0
+        val scaleX = x.toDouble() * 256.0
+        val scaleY = y.toDouble() * 256.0
+        for (radius in listOf(20f, 45f, 85f, 150f, 200f)) {
+            val warp = Math.sin((scaleX + radius) / 50000.0) * 15.0 + Math.cos((scaleY + radius) / 50000.0) * 15.0
+            canvas.drawCircle(128f + warp.toFloat(), 128f + warp.toFloat(), radius, contourPaint)
+        }
+
+        // Monospace telemetry labeling texts
+        val fontPaint = android.graphics.Paint().apply {
+            color = 0x888B949E.toInt() // clean slate gray
+            textSize = 8f
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+        canvas.drawText("GRID INDEX [Z:$z, X:$x, Y:$y]", 10f, 24f, fontPaint)
+        canvas.drawText("CYBERTRAIL TACTICAL GIS", 10f, 246f, fontPaint)
+        canvas.drawText("+5m INTERVALS", 170f, 246f, fontPaint)
+
+        val outputStream = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, outputStream)
+        val bytes = outputStream.toByteArray()
+        bitmap.recycle()
+        return bytes
     }
 }
