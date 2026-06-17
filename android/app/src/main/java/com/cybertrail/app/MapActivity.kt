@@ -149,6 +149,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                     hudStyleStatus.text = "Style加载: Success (LocalTileServer)"
                     Log.i(TAG, "Style loaded successfully with mbtiles HTTP server.")
+                    Log.d(TAG, "STYLE_SUCCESS")
                 }
             } else {
                 // Load empty style or original if no map found

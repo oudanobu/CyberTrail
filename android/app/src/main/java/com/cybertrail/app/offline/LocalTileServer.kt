@@ -20,6 +20,7 @@ class LocalTileServer(private val mbtilesPath: String) {
             db = SQLiteDatabase.openDatabase(mbtilesPath, null, SQLiteDatabase.OPEN_READONLY)
             serverSocket = ServerSocket(port)
             isRunning = true
+            Log.d(TAG, "SERVER_START port=$port")
             thread {
                 while (isRunning) {
                     try {
@@ -37,6 +38,7 @@ class LocalTileServer(private val mbtilesPath: String) {
 
     private fun handleRequest(client: Socket) {
         thread {
+            Log.d(TAG, "MAP_REQUEST_TILE")
             try {
                 val input = client.getInputStream().bufferedReader()
                 val line = input.readLine() ?: return@thread
@@ -51,6 +53,7 @@ class LocalTileServer(private val mbtilesPath: String) {
                         val y = yExt.split('.')[0].toIntOrNull()
 
                         if (z != null && x != null && y != null) {
+                            Log.d(TAG, "TILE_REQUEST z=$z x=$x y=$y")
                             // MBTiles format holds tiles in TMS coordinate format
                             // We need to invert the Y coordinate for standard XYZ requests
                             val tmsY = (1 shl z) - 1 - y
@@ -76,6 +79,7 @@ class LocalTileServer(private val mbtilesPath: String) {
     }
 
     private fun getTile(z: Int, x: Int, y: Int): ByteArray? {
+        Log.d(TAG, "SQL_TILE_QUERY z=$z x=$x y=$y")
         db?.let { database ->
             var tileData: ByteArray? = null
             try {
@@ -85,13 +89,17 @@ class LocalTileServer(private val mbtilesPath: String) {
                 )
                 if (cursor.moveToFirst()) {
                     tileData = cursor.getBlob(0)
+                    Log.d(TAG, "TILE_FOUND size=${tileData.size}")
+                } else {
+                    Log.d(TAG, "TILE_NOT_FOUND")
                 }
                 cursor.close()
             } catch (e: Exception) {
-                // Ignore query error to avoid spam
+                Log.d(TAG, "TILE_NOT_FOUND error=${e.message}")
             }
             return tileData
         }
+        Log.d(TAG, "TILE_NOT_FOUND db_null")
         return null
     }
 
