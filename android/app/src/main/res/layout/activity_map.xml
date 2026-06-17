@@ -116,6 +116,15 @@
             android:text="Style加载: 等待加载..."
             android:textColor="@color/cyber_green"
             android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/hud_diagnostic_counters"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RenderFrame: 0\nCameraMove: 0\nTileRequest: 0\nTileFound: 0\nTileNotFound: 0"
+            android:textColor="@color/cyber_amber"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 
 </RelativeLayout>

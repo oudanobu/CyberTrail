@@ -14,6 +14,10 @@ class LocalTileServer(private val mbtilesPath: String) {
     private var db: SQLiteDatabase? = null
     val port = 8080
 
+    var onTileRequest: (() -> Unit)? = null
+    var onTileFound: (() -> Unit)? = null
+    var onTileNotFound: (() -> Unit)? = null
+
     fun start() {
         if (isRunning) return
         try {
@@ -54,6 +58,7 @@ class LocalTileServer(private val mbtilesPath: String) {
 
                         if (z != null && x != null && y != null) {
                             Log.d(TAG, "TILE_REQUEST z=$z x=$x y=$y")
+                            onTileRequest?.invoke()
                             // MBTiles format holds tiles in TMS coordinate format
                             // We need to invert the Y coordinate for standard XYZ requests
                             val tmsY = (1 shl z) - 1 - y
@@ -61,14 +66,18 @@ class LocalTileServer(private val mbtilesPath: String) {
                             val tileData = getTile(z, x, tmsY)
                             if (tileData != null) {
                                 sendResponse(client.getOutputStream(), 200, "image/png", tileData)
+                                onTileFound?.invoke()
                             } else {
                                 send404(client.getOutputStream())
+                                onTileNotFound?.invoke()
                             }
                         } else {
                             send404(client.getOutputStream())
+                            onTileNotFound?.invoke()
                         }
                     } else {
                         send404(client.getOutputStream())
+                        onTileNotFound?.invoke()
                     }
                 }
             } catch (e: Exception) {

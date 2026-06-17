@@ -36,6 +36,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var hudMbtilesStatus: TextView
     private lateinit var hudTileCount: TextView
     private lateinit var hudStyleStatus: TextView
+    private lateinit var hudDiagnosticCounters: TextView
+
+    // Counters for diagnostics
+    private var renderFrameCount = 0
+    private var cameraMoveCount = 0
+    private var tileRequestCount = 0
+    private var tileFoundCount = 0
+    private var tileNotFoundCount = 0
 
     private lateinit var locationManager: LocationManager
 
@@ -83,8 +91,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         hudMbtilesStatus = findViewById(R.id.hud_mbtiles_status)
         hudTileCount = findViewById(R.id.hud_tile_count)
         hudStyleStatus = findViewById(R.id.hud_style_status)
+        hudDiagnosticCounters = findViewById(R.id.hud_diagnostic_counters)
 
         mapView.onCreate(savedInstanceState)
+        Log.d("CYBERTRAIL_MAP", "MapView onCreate")
+        mapView.addOnDidFinishRenderingFrameListener {
+            renderFrameCount++
+            Log.d("CYBERTRAIL_MAP", "Map render frame finished. FRAME_RENDERED=$renderFrameCount")
+            updateDiagnosticHud()
+        }
         mapView.getMapAsync(this)
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -148,8 +163,18 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var localTileServer: com.cybertrail.app.offline.LocalTileServer? = null
 
     override fun onMapReady(map: MapboxMap) {
+        Log.d("CYBERTRAIL_MAP", "onMapReady")
         this.mapboxMap = map
         hudStyleStatus.text = "Style加载: 正在建立本地地图渲染器..."
+
+        map.addOnMapClickListener {
+            Log.d("CYBERTRAIL_MAP", "Map clicked")
+            false
+        }
+
+        map.addOnCameraIdleListener {
+            Log.d("CYBERTRAIL_MAP", "Map idle")
+        }
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
         val mapsDir = java.io.File(baseDir, "maps")
@@ -169,12 +194,36 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 
                 // 启动本地瓦片服务器
                 localTileServer?.stop()
-                localTileServer = com.cybertrail.app.offline.LocalTileServer(absolutePath)
+                localTileServer = com.cybertrail.app.offline.LocalTileServer(absolutePath).apply {
+                    onTileRequest = {
+                        runOnUiThread {
+                            tileRequestCount++
+                            Log.d("CYBERTRAIL_MAP", "TILE_REQUEST: $tileRequestCount")
+                            updateDiagnosticHud()
+                        }
+                    }
+                    onTileFound = {
+                        runOnUiThread {
+                            tileFoundCount++
+                            Log.d("CYBERTRAIL_MAP", "TILE_FOUND: $tileFoundCount")
+                            updateDiagnosticHud()
+                        }
+                    }
+                    onTileNotFound = {
+                        runOnUiThread {
+                            tileNotFoundCount++
+                            Log.d("CYBERTRAIL_MAP", "TILE_NOT_FOUND: $tileNotFoundCount")
+                            updateDiagnosticHud()
+                        }
+                    }
+                }
                 localTileServer?.start()
 
                 styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "http://127.0.0.1:${localTileServer?.port ?: 8080}/{z}/{x}/{y}.png")
                 
+                Log.d("CYBERTRAIL_MAP", "setStyle begin")
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                    Log.d("CYBERTRAIL_MAP", "STYLE_SUCCESS")
                     hudStyleStatus.text = "Style加载: Success (LocalTileServer)"
                     Log.i(TAG, "Style loaded successfully with mbtiles HTTP server.")
                     Log.d(TAG, "STYLE_SUCCESS")
@@ -199,7 +248,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     "    }\n" +
                     "  ]\n" +
                     "}"
+                Log.d("CYBERTRAIL_MAP", "setStyle begin")
                 map.setStyle(Style.Builder().fromJson(fallbackStyle)) { style ->
+                    Log.d("CYBERTRAIL_MAP", "STYLE_SUCCESS")
                     hudStyleStatus.text = "Style加载: 无离线地图(使用在线OSM备用)"
                 }
             }
@@ -210,6 +261,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         // Bind camera change listener to query elevation at map center
         map.addOnCameraMoveListener {
+            cameraMoveCount++
+            Log.d("CYBERTRAIL_MAP", "Camera changed. CAMERA_MOVED=$cameraMoveCount")
+            updateDiagnosticHud()
             val center = map.cameraPosition.target
             if (center != null) {
                 val lat = center.latitude
@@ -264,19 +318,28 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     override fun onProviderEnabled(provider: String) {}
     override fun onProviderDisabled(provider: String) {}
 
+    override fun onStart() {
+        super.onStart()
+        mapView.onStart()
+        Log.d("CYBERTRAIL_MAP", "MapView onStart")
+    }
+
     override fun onResume() {
         super.onResume();
         mapView.onResume();
+        Log.d("CYBERTRAIL_MAP", "MapView onResume")
     }
 
     override fun onPause() {
         super.onPause();
         mapView.onPause();
+        Log.d("CYBERTRAIL_MAP", "MapView onPause")
     }
 
     override fun onStop() {
         super.onStop();
         mapView.onStop();
+        Log.d("CYBERTRAIL_MAP", "MapView onStop")
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -298,5 +361,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     override fun onLowMemory() {
         super.onLowMemory();
         mapView.onLowMemory();
+    }
+
+    private fun updateDiagnosticHud() {
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount"
     }
 }
