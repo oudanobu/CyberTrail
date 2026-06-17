@@ -22,9 +22,60 @@ class OfflineMapActivity : AppCompatActivity() {
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            // Ideally we check if id matches, but here we just refresh
+            var verified = false
+            var fileUriStr: String? = null
+            
+            if (id != null && id != -1L) {
+                val dm = context?.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+                if (dm != null) {
+                    val query = DownloadManager.Query().setFilterById(id)
+                    val cursor = dm.query(query)
+                    if (cursor != null && cursor.moveToFirst()) {
+                        val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                        val uriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                        if (statusIdx >= 0 && cursor.getInt(statusIdx) == DownloadManager.STATUS_SUCCESSFUL) {
+                            if (uriIdx >= 0) fileUriStr = cursor.getString(uriIdx)
+                        }
+                        cursor.close()
+                    }
+                }
+            }
+
+            if (fileUriStr != null) {
+                try {
+                    val file = java.io.File(android.net.Uri.parse(fileUriStr).path ?: "")
+                    if (file.exists() && file.length() > 0) {
+                        val db = android.database.sqlite.SQLiteDatabase.openDatabase(file.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+                        
+                        val metaCursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='metadata'", null)
+                        val hasMeta = metaCursor.moveToFirst()
+                        metaCursor.close()
+                        
+                        val tilesCursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='tiles'", null)
+                        val hasTiles = tilesCursor.moveToFirst()
+                        tilesCursor.close()
+                        
+                        db.close()
+                        
+                        if (hasMeta && hasTiles) {
+                            verified = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("OfflineMapActivity", "Verification failed", e)
+                }
+            }
+            
+            if (verified) {
+                Toast.makeText(this@OfflineMapActivity, "地图下载完成且验证成功", Toast.LENGTH_SHORT).show()
+                val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
+                sendBroadcast(completeIntent)
+            } else {
+                Toast.makeText(this@OfflineMapActivity, "地图下载验证失败", Toast.LENGTH_SHORT).show()
+                // optional: delete bad file
+            }
+            
             refreshList()
-            Toast.makeText(this@OfflineMapActivity, "地图下载完成/失败", Toast.LENGTH_SHORT).show()
         }
     }
 

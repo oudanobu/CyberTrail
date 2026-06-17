@@ -28,40 +28,22 @@ class OfflineMapManager(private val context: Context) {
     fun getAvailableRegions(): List<OfflineMapRegion> {
         val regions = listOf(
             OfflineMapRegion(
-                id = "tokyo",
-                name = "Tokyo",
-                mbtilesUrl = "https://raw.githubusercontent.com/klokantech/vector-tiles-sample/master/data/v3.mbtiles", // 示例
-                demUrl = null,
-                expectedSizeBytes = 22_000_000,
-                tileCount = 5000,
-                bounds = "139.5, 35.5, 140.0, 36.0"
-            ),
-            OfflineMapRegion(
-                id = "fuji",
-                name = "Fuji",
-                mbtilesUrl = "https://example.com/fuji.mbtiles",
-                demUrl = null,
-                expectedSizeBytes = 50_000_000,
-                tileCount = 12000,
-                bounds = "138.6, 35.2, 138.9, 35.5"
-            ),
-            OfflineMapRegion(
-                id = "yosemite",
-                name = "Yosemite",
-                mbtilesUrl = "https://example.com/yosemite.mbtiles",
-                demUrl = null,
-                expectedSizeBytes = 80_000_000,
-                tileCount = 20000,
-                bounds = "-119.8, 37.6, -119.4, 38.0"
-            ),
-            OfflineMapRegion(
-                id = "test_region",
-                name = "Test Region",
-                mbtilesUrl = "https://github.com/syncpoint/mbtiles-sample/raw/master/countries.mbtiles", // 小的测试文件
+                id = "world",
+                name = "World",
+                mbtilesUrl = "https://github.com/syncpoint/mbtiles-sample/raw/master/countries.mbtiles",
                 demUrl = null,
                 expectedSizeBytes = 1_000_000,
                 tileCount = 100,
                 bounds = "-180, -90, 180, 90"
+            ),
+            OfflineMapRegion(
+                id = "asia_china_liaoning_dandong",
+                name = "Asia > China > Liaoning > Dandong",
+                mbtilesUrl = "https://raw.githubusercontent.com/klokantech/vector-tiles-sample/master/data/v3.mbtiles",
+                demUrl = null,
+                expectedSizeBytes = 22_000_000,
+                tileCount = 5000,
+                bounds = "124.0, 40.0, 125.0, 41.0"
             )
         )
         

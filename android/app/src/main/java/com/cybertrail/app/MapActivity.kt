@@ -42,6 +42,16 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         private const val TAG = "MapActivity"
     }
 
+    private val downloadReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.i(TAG, "Received MAP_DOWNLOAD_COMPLETED broadcast, refreshing map...")
+            runOfflineDiagnostics()
+            mapboxMap?.let { map ->
+                onMapReady(map)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -56,6 +66,12 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         // Initialize GIS Engine
         demSystem = DEMSystem(this)
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(downloadReceiver, android.content.IntentFilter("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED"), Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(downloadReceiver, android.content.IntentFilter("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED"))
+        }
 
         // Bind layouts
         mapView = findViewById(R.id.mapView)
@@ -117,6 +133,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         if (tilesNum > 0) {
             hudTileCount.text = "地图瓦片数: $tilesNum 块 (真实读取)"
+            Log.i(TAG, "Loaded MBTiles:\n${mbtilesFile.absolutePath}\n${mbtilesFile.length()}\n$tilesNum")
         } else {
             hudTileCount.text = "地图瓦片数: " + if (exists) "读取中/无可用瓦片" else "0 块 (离线包缺失)"
         }
@@ -152,10 +169,27 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     Log.d(TAG, "STYLE_SUCCESS")
                 }
             } else {
-                // Load empty style or original if no map found
-                styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "")
-                map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                    hudStyleStatus.text = "Style加载: 无离线地图可用"
+                // Load OSM fallback map
+                val fallbackStyle = "{\n" +
+                    "  \"version\": 8,\n" +
+                    "  \"sources\": {\n" +
+                    "    \"osm-fallback\": {\n" +
+                    "      \"type\": \"raster\",\n" +
+                    "      \"tiles\": [ \"https://a.tile.openstreetmap.org/{z}/{x}/{y}.png\" ],\n" +
+                    "      \"tileSize\": 256,\n" +
+                    "      \"maxzoom\": 18\n" +
+                    "    }\n" +
+                    "  },\n" +
+                    "  \"layers\": [\n" +
+                    "    {\n" +
+                    "      \"id\": \"osm-fallback-layer\",\n" +
+                    "      \"type\": \"raster\",\n" +
+                    "      \"source\": \"osm-fallback\"\n" +
+                    "    }\n" +
+                    "  ]\n" +
+                    "}"
+                map.setStyle(Style.Builder().fromJson(fallbackStyle)) { style ->
+                    hudStyleStatus.text = "Style加载: 无离线地图(使用在线OSM备用)"
                 }
             }
         } catch (e: Exception) {
