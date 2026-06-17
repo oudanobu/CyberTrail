@@ -1,0 +1,37 @@
+{
+  "version": 8,
+  "name": "Offline Style",
+  "sources": {
+    "terrain-rgb": {
+      "type": "raster-dem",
+      "tiles": [
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrain-rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 14
+    }
+  },
+  "terrain": {
+    "source": "terrain-rgb",
+    "exaggeration": 1.5
+  },
+  "sprite": "asset://sprites/sprite",
+  "glyphs": "asset://fonts/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#f8f4f0"
+      }
+    },
+    {
+      "id": "hillshade",
+      "type": "hillshade",
+      "source": "terrain-rgb",
+      "paint": {
+        "hillshade-shadow-color": "#473B24"
+      }
+    }
+  ]
+}

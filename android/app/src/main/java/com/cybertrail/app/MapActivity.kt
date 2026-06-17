@@ -82,6 +82,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
             mapsDir.mkdirs()
         }
         val mbtilesFile = File(mapsDir, "yosemite.mbtiles")
+        
+        // Copy mbtiles from assets if it doesn't exist
+        if (!mbtilesFile.exists()) {
+            try {
+                assets.open("yosemite.mbtiles").use { inputStream ->
+                    mbtilesFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                Log.i(TAG, "Successfully copied yosemite.mbtiles from assets to internal storage.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy yosemite.mbtiles from assets.", e)
+            }
+        }
+
         val absolutePath = mbtilesFile.absolutePath
 
         hudMbtilesPath.text = "路径: $absolutePath"
@@ -120,7 +135,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val offlineStyleUri = "asset://style.json"
         
         map.setStyle(Style.Builder().fromUri(offlineStyleUri)) { style ->
-            hudStyleStatus.text = "Style加载: ✅ 成功载入离线矢量微观底图 (Success)"
+            hudStyleStatus.text = "Style加载: Success"
             Log.i(TAG, "Style loaded successfully.")
         }
 
@@ -146,19 +161,27 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         }
     }
 
-    private fun updateTerrainHud(lat: Double, lon: Double) {
-        try {
-            val elevation = demSystem.getElevation(lat, lon)
-            val slope = demSystem.getSlope(lat, lon)
-            
-            val aspectRes = demSystem.terrainAnalyzer.analyzeLocation(lat, lon)
-            val aspect = aspectRes.aspect
+    private var lastFetchTime = 0L
 
-            hudElevation.text = "海拔: %.1f m".format(elevation)
-            hudSlope.text = "坡度: %.1f°".format(slope)
-            hudAspect.text = "坡向: %.1f°".format(aspect)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calculating terrain telemetry", e)
+    private fun updateTerrainHud(lat: Double, lon: Double) {
+        val now = System.currentTimeMillis()
+        if (now - lastFetchTime < 1000) return // Throttle
+        lastFetchTime = now
+
+        demSystem.terrainAnalyzer.analyzeLocationAsync(lat, lon) { result ->
+            if (result != null) {
+                runOnUiThread {
+                    hudElevation.text = "海拔: %.1f m".format(result.elevation)
+                    hudSlope.text = "坡度: %.1f°".format(result.slope)
+                    hudAspect.text = "坡向: %.1f°".format(result.aspect)
+                }
+            } else {
+                runOnUiThread {
+                    hudElevation.text = "海拔: 获取中..."
+                    hudSlope.text = "坡度: 获取中..."
+                    hudAspect.text = "坡向: 获取中..."
+                }
+            }
         }
     }
 
