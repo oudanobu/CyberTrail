@@ -44,6 +44,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var tileRequestCount = 0
     private var tileFoundCount = 0
     private var tileNotFoundCount = 0
+    private var sourceExists: Boolean? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -221,12 +222,32 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
                 styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "http://127.0.0.1:${localTileServer?.port ?: 8080}/{z}/{x}/{y}.png")
                 
+                Log.d("MAP_DEBUG", "===== FINAL STYLE JSON START =====")
+                Log.d("MAP_DEBUG", styleJson)
+                Log.d("MAP_DEBUG", "===== FINAL STYLE JSON END =====")
+                
                 Log.d("CYBERTRAIL_MAP", "setStyle begin")
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                     Log.d("CYBERTRAIL_MAP", "STYLE_SUCCESS")
                     hudStyleStatus.text = "Style加载: Success (LocalTileServer)"
                     Log.i(TAG, "Style loaded successfully with mbtiles HTTP server.")
                     Log.d(TAG, "STYLE_SUCCESS")
+
+                    Log.d("MAP_DEBUG", "===== STYLE SOURCES =====")
+                    style.sources.forEach {
+                        Log.d("MAP_DEBUG", "SOURCE=${it.id}")
+                    }
+
+                    Log.d("MAP_DEBUG", "===== STYLE LAYERS =====")
+                    style.layers.forEach {
+                        Log.d("MAP_DEBUG", "LAYER=${it.id}")
+                    }
+
+                    val source = style.getSource("offline-mbtiles")
+                    val isExist = source != null
+                    sourceExists = isExist
+                    Log.d("MAP_DEBUG", "SOURCE_EXISTS=$isExist")
+                    updateDiagnosticHud()
                 }
             } else {
                 // Load OSM fallback map
@@ -364,6 +385,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     }
 
     private fun updateDiagnosticHud() {
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount"
+        val sExists = sourceExists?.toString() ?: "Unknown"
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists"
     }
 }
