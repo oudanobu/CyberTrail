@@ -42,6 +42,13 @@ class MainActivity : AppCompatActivity(), LocationListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Initialize directories and copy default world.mbtiles on first boot
+        try {
+            com.cybertrail.app.offline.OfflineMapManager(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         tvGpsStatus = findViewById(R.id.tv_gps_status)
         tvCoordinates = findViewById(R.id.tv_coordinates)
         tvSatellites = findViewById(R.id.tv_satellites)

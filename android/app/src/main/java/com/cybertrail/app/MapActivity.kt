@@ -100,9 +100,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
             mapsDir.mkdirs()
         }
         
-        // Find any downloaded maps
-        val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
-        val mbtilesFile = mbtilesFiles?.firstOrNull()
+        // Prioritize world.mbtiles, then fall back to any other .mbtiles file
+        val worldFile = java.io.File(mapsDir, "world.mbtiles")
+        val mbtilesFile = if (worldFile.exists()) {
+            worldFile
+        } else {
+            val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
+            mbtilesFiles?.firstOrNull()
+        }
 
         if (mbtilesFile == null) {
             hudMbtilesStatus.text = "物理文件: ❌ 未找到离线包 (请进入离线地图管理下载)"
@@ -148,8 +153,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
         val mapsDir = java.io.File(baseDir, "maps")
-        val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
-        val mbtilesFile = mbtilesFiles?.firstOrNull()
+        val worldFile = java.io.File(mapsDir, "world.mbtiles")
+        val mbtilesFile = if (worldFile.exists()) {
+            worldFile
+        } else {
+            val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
+            mbtilesFiles?.firstOrNull()
+        }
 
         try {
             var styleJson = assets.open("style.json").bufferedReader().use { it.readText() }

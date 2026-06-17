@@ -17,6 +17,7 @@ class OfflineMapManager(private val context: Context) {
     
     init {
         initDirectories()
+        copyWorldMapIfNeeded()
     }
     
     private fun initDirectories() {
@@ -25,25 +26,32 @@ class OfflineMapManager(private val context: Context) {
         if (!demDir.exists()) demDir.mkdirs()
     }
 
+    private fun copyWorldMapIfNeeded() {
+        val destFile = File(mapsDir, "world.mbtiles")
+        if (!destFile.exists()) {
+            try {
+                context.assets.open("world.mbtiles").use { inputStream ->
+                    destFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                Log.i(TAG, "Successfully copied world.mbtiles from assets to maps storage.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy world.mbtiles from assets", e)
+            }
+        }
+    }
+
     fun getAvailableRegions(): List<OfflineMapRegion> {
         val regions = listOf(
             OfflineMapRegion(
                 id = "world",
-                name = "World",
-                mbtilesUrl = "https://github.com/syncpoint/mbtiles-sample/raw/master/countries.mbtiles",
+                name = "World (Raster Default Map)",
+                mbtilesUrl = "https://github.com/klokantech/vector-tiles-sample/releases/download/v1.0/countries-raster.mbtiles",
                 demUrl = null,
-                expectedSizeBytes = 1_000_000,
-                tileCount = 100,
-                bounds = "-180, -90, 180, 90"
-            ),
-            OfflineMapRegion(
-                id = "asia_china_liaoning_dandong",
-                name = "Asia > China > Liaoning > Dandong",
-                mbtilesUrl = "https://raw.githubusercontent.com/klokantech/vector-tiles-sample/master/data/v3.mbtiles",
-                demUrl = null,
-                expectedSizeBytes = 22_000_000,
-                tileCount = 5000,
-                bounds = "124.0, 40.0, 125.0, 41.0"
+                expectedSizeBytes = 9633792,
+                tileCount = 5461,
+                bounds = "-180,-85.738076382392,180,84.79842793857"
             )
         )
         
