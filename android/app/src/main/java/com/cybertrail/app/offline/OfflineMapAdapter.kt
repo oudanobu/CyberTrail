@@ -23,7 +23,7 @@ class OfflineMapAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MapViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.id.item_map_region, parent, false)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_map_region, parent, false)
         return MapViewHolder(view)
     }
 
