@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
         tvCoordinates = findViewById(R.id.tv_coordinates)
         tvSatellites = findViewById(R.id.tv_satellites)
         btnLaunchMap = findViewById(R.id.btn_launch_map)
+        val btnLaunchOfflineMaps: Button = findViewById(R.id.btn_launch_offline_maps)
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
@@ -54,14 +55,24 @@ class MainActivity : AppCompatActivity(), LocationListener {
             startActivity(intent)
         }
 
+        btnLaunchOfflineMaps.setOnClickListener {
+            val intent = Intent(this, com.cybertrail.app.offline.OfflineMapActivity::class.java)
+            startActivity(intent)
+        }
+
         checkAndRequestPermissions()
     }
 
     private fun checkAndRequestPermissions() {
-        val permissions = arrayOf(
+        val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
 
         val missingPermissions = permissions.filter {
             ActivityCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
@@ -70,8 +81,22 @@ class MainActivity : AppCompatActivity(), LocationListener {
         if (missingPermissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), PERMISSION_REQUEST_CODE)
         } else {
-            startLocationUpdates()
+            checkManageExternalStorage()
         }
+    }
+
+    private fun checkManageExternalStorage() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                val uri = android.net.Uri.fromParts("package", packageName, null)
+                intent.data = uri
+                startActivity(intent)
+                Toast.makeText(this, "请授予所有文件访问权限以存储离线地图", Toast.LENGTH_LONG).show()
+                return
+            }
+        }
+        startLocationUpdates()
     }
 
     override fun onRequestPermissionsResult(
@@ -81,12 +106,7 @@ class MainActivity : AppCompatActivity(), LocationListener {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                startLocationUpdates()
-            } else {
-                tvGpsStatus.text = "GPS状态: 权限未授予 (无定位权限)"
-                Toast.makeText(this, "需要定位权限以使用真实GPS定位", Toast.LENGTH_LONG).show()
-            }
+            checkManageExternalStorage()
         }
     }
 

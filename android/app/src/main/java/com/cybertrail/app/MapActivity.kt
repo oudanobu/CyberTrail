@@ -77,28 +77,24 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     }
 
     private fun runOfflineDiagnostics() {
-        val mapsDir = File(filesDir, "maps")
+        val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
+        val mapsDir = java.io.File(baseDir, "maps")
         if (!mapsDir.exists()) {
             mapsDir.mkdirs()
         }
-        val mbtilesFile = File(mapsDir, "yosemite.mbtiles")
         
-        // Copy mbtiles from assets if it doesn't exist
-        if (!mbtilesFile.exists()) {
-            try {
-                assets.open("yosemite.mbtiles").use { inputStream ->
-                    mbtilesFile.outputStream().use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-                Log.i(TAG, "Successfully copied yosemite.mbtiles from assets to internal storage.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy yosemite.mbtiles from assets.", e)
-            }
+        // Find any downloaded maps
+        val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
+        val mbtilesFile = mbtilesFiles?.firstOrNull()
+
+        if (mbtilesFile == null) {
+            hudMbtilesStatus.text = "物理文件: ❌ 未找到离线包 (请进入离线地图管理下载)"
+            hudMbtilesPath.text = "路径: 暂无"
+            hudTileCount.text = "地图瓦片数: 0 块 (离线包缺失)"
+            return
         }
 
         val absolutePath = mbtilesFile.absolutePath
-
         hudMbtilesPath.text = "路径: $absolutePath"
 
         val exists = mbtilesFile.exists()
@@ -107,7 +103,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         var tilesNum = 0
         if (exists) {
             try {
-                val db = SQLiteDatabase.openDatabase(absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                val db = android.database.sqlite.SQLiteDatabase.openDatabase(absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
                 val cursor = db.rawQuery("SELECT COUNT(*) FROM tiles", null)
                 if (cursor.moveToFirst()) {
                     tilesNum = cursor.getInt(0)
@@ -115,11 +111,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 cursor.close()
                 db.close()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to query tiles count from MBTiles database", e)
+                android.util.Log.e(TAG, "Failed to query tiles count from MBTiles database", e)
             }
         }
 
-        // Display read block
         if (tilesNum > 0) {
             hudTileCount.text = "地图瓦片数: $tilesNum 块 (真实读取)"
         } else {
@@ -127,16 +122,44 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         }
     }
 
+    private var localTileServer: com.cybertrail.app.offline.LocalTileServer? = null
+
     override fun onMapReady(map: MapboxMap) {
         this.mapboxMap = map
         hudStyleStatus.text = "Style加载: 正在建立本地地图渲染器..."
 
-        // Load offline custom style
-        val offlineStyleUri = "asset://style.json"
-        
-        map.setStyle(Style.Builder().fromUri(offlineStyleUri)) { style ->
-            hudStyleStatus.text = "Style加载: Success"
-            Log.i(TAG, "Style loaded successfully.")
+        val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
+        val mapsDir = java.io.File(baseDir, "maps")
+        val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
+        val mbtilesFile = mbtilesFiles?.firstOrNull()
+
+        try {
+            var styleJson = assets.open("style.json").bufferedReader().use { it.readText() }
+            
+            if (mbtilesFile != null) {
+                val absolutePath = mbtilesFile.absolutePath
+                
+                // 启动本地瓦片服务器
+                localTileServer?.stop()
+                localTileServer = com.cybertrail.app.offline.LocalTileServer(absolutePath)
+                localTileServer?.start()
+
+                styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "http://127.0.0.1:${localTileServer?.port ?: 8080}/{z}/{x}/{y}.png")
+                
+                map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                    hudStyleStatus.text = "Style加载: Success (LocalTileServer)"
+                    Log.i(TAG, "Style loaded successfully with mbtiles HTTP server.")
+                }
+            } else {
+                // Load empty style or original if no map found
+                styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "")
+                map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                    hudStyleStatus.text = "Style加载: 无离线地图可用"
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load dynamic style JSON", e)
+            hudStyleStatus.text = "Style加载: Failed"
         }
 
         // Bind camera change listener to query elevation at map center
@@ -217,6 +240,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        localTileServer?.stop()
         locationManager.removeUpdates(this)
         try {
             mapView.onDestroy()
