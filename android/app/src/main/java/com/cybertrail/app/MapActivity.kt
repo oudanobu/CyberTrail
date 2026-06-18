@@ -47,6 +47,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var sourceExists: Boolean? = null
     private var layerExists: Boolean? = null
     private var layerClassString: String? = null
+    private var layerSourceId: String? = null
+    private var layerVisibilityString: String? = null
+    private var cameraZoomFloat: Float? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -260,6 +263,35 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     Log.d("MAP_DEBUG", "LAYER_EXISTS=$isLayerExist")
                     Log.d("MAP_DEBUG", "LAYER_CLASS=$clazzName")
 
+                    if (offlineLayer != null) {
+                        val srcId = try {
+                            val getter = offlineLayer.javaClass.getMethod("getSourceId")
+                            getter.invoke(offlineLayer) as? String
+                        } catch (e: Exception) {
+                            null
+                        }
+                        Log.d("MAP_DEBUG", "LAYER_SOURCE=$srcId")
+                        layerSourceId = srcId
+
+                        val vis = try {
+                            offlineLayer.visibility?.value?.toString()
+                        } catch (e: Exception) {
+                            null
+                        }
+                        Log.d("MAP_DEBUG", "LAYER_VISIBILITY=$vis")
+                        layerVisibilityString = vis
+                    }
+
+                    Log.d("MAP_DEBUG", "MAP_MINZOOM=${map.minZoomPreference}")
+                    Log.d("MAP_DEBUG", "MAP_MAXZOOM=${map.maxZoomPreference}")
+                    Log.d("MAP_DEBUG", "CAMERA_ZOOM=${map.cameraPosition.zoom}")
+                    cameraZoomFloat = map.cameraPosition.zoom.toFloat()
+
+                    val tilesUrlRegex = Regex("\"tiles\"\\s*:\\s*\\[\\s*\"([^\"]+)\"")
+                    val match = tilesUrlRegex.find(styleJson)
+                    val tileUrlFromStyleJson = match?.groupValues?.get(1) ?: "not found in JSON"
+                    Log.d("MAP_DEBUG", "STYLE_JSON_TILE_URL=$tileUrlFromStyleJson")
+
                     updateDiagnosticHud()
                 }
             } else {
@@ -297,6 +329,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         map.addOnCameraMoveListener {
             cameraMoveCount++
             Log.d("CYBERTRAIL_MAP", "Camera changed. CAMERA_MOVED=$cameraMoveCount")
+            cameraZoomFloat = map.cameraPosition.zoom.toFloat()
             updateDiagnosticHud()
             val center = map.cameraPosition.target
             if (center != null) {
