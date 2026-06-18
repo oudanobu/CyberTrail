@@ -62,6 +62,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var layerMaxZoomString: String? = null
     private var sourceMinZoomString: String? = null
     private var sourceMaxZoomString: String? = null
+    private var rasterTilesString: String? = null
+    private var rasterSchemeString: String? = null
+    private var rasterMinZoomString: String? = null
+    private var rasterMaxZoomString: String? = null
+    private var rasterAttributionString: String? = null
+    private var rasterBoundsString: String? = null
+    private var rasterSourceAvailableMethodsString: String? = null
+    private var isHudExpanded: Boolean = true
 
     private lateinit var locationManager: LocationManager
 
@@ -110,6 +118,12 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         hudTileCount = findViewById(R.id.hud_tile_count)
         hudStyleStatus = findViewById(R.id.hud_style_status)
         hudDiagnosticCounters = findViewById(R.id.hud_diagnostic_counters)
+        hudDiagnosticCounters.isClickable = true
+        hudDiagnosticCounters.isFocusable = true
+        hudDiagnosticCounters.setOnClickListener {
+            isHudExpanded = !isHudExpanded
+            updateDiagnosticHud()
+        }
 
         mapView.onCreate(savedInstanceState)
         Log.d("CYBERTRAIL_MAP", "MapView onCreate")
@@ -397,6 +411,98 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     sourceMaxZoomString = sMax ?: "Unknown"
                     Log.d("MAP_DEBUG", "SourceMaxZoom: $sourceMaxZoomString")
 
+                    // Part 2 & 3: Reflecting RasterSource properties
+                    val ms = source?.javaClass?.methods ?: arrayOf()
+                    val availableMethods = ms.filter { it.parameterTypes.isEmpty() }
+                        .map { "${it.name}:${it.returnType.simpleName}" }
+                        .sorted()
+                        .joinToString(", ")
+                    rasterSourceAvailableMethodsString = availableMethods
+                    Log.d("MAP_DEBUG", "RASTER_SOURCE_AVAILABLE_METHODS=$availableMethods")
+
+                    fun invokeNoArgMethod(obj: Any?, vararg names: String): Any? {
+                        if (obj == null) return null
+                        for (name in names) {
+                            try {
+                                val method = obj.javaClass.methods.firstOrNull { 
+                                    it.name.equals(name, ignoreCase = true) && it.parameterTypes.isEmpty() 
+                                }
+                                if (method != null) {
+                                    return method.invoke(obj)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MAP_DEBUG", "Failed to invoke method $name", e)
+                            }
+                        }
+                        return null
+                    }
+
+                    // 1. Tiles
+                    val tilesVal = invokeNoArgMethod(source, "getUri", "getUrl", "getTiles")
+                    if (tilesVal != null) {
+                        rasterTilesString = if (tilesVal is Array<*>) {
+                            tilesVal.joinToString(",")
+                        } else if (tilesVal is List<*>) {
+                            tilesVal.joinToString(",")
+                        } else {
+                            tilesVal.toString()
+                        }
+                        Log.d("MAP_DEBUG", "RASTER_TILES=$rasterTilesString")
+                    } else {
+                        rasterTilesString = "Cannot read RasterSource field:\ntiles"
+                        Log.d("MAP_DEBUG", "RASTER_TILES=Cannot read RasterSource field: tiles")
+                    }
+
+                    // 2. Scheme
+                    val schemeVal = invokeNoArgMethod(source, "getScheme", "scheme")
+                    if (schemeVal != null) {
+                        rasterSchemeString = schemeVal.toString()
+                        Log.d("MAP_DEBUG", "RASTER_SCHEME=$rasterSchemeString")
+                    } else {
+                        rasterSchemeString = "Cannot read RasterSource field:\nscheme"
+                        Log.d("MAP_DEBUG", "RASTER_SCHEME=Cannot read RasterSource field: scheme")
+                    }
+
+                    // 3. MinZoom
+                    val rMinZoomVal = invokeNoArgMethod(source, "getMinZoom", "getMinzoom", "minZoom", "minzoom")
+                    if (rMinZoomVal != null) {
+                        rasterMinZoomString = rMinZoomVal.toString()
+                        Log.d("MAP_DEBUG", "RASTER_MIN_ZOOM=$rasterMinZoomString")
+                    } else {
+                        rasterMinZoomString = "Cannot read RasterSource field:\nminZoom"
+                        Log.d("MAP_DEBUG", "RASTER_MIN_ZOOM=Cannot read RasterSource field: minZoom")
+                    }
+
+                    // 4. MaxZoom
+                    val rMaxZoomVal = invokeNoArgMethod(source, "getMaxZoom", "getMaxzoom", "maxZoom", "maxzoom")
+                    if (rMaxZoomVal != null) {
+                        rasterMaxZoomString = rMaxZoomVal.toString()
+                        Log.d("MAP_DEBUG", "RASTER_MAX_ZOOM=$rasterMaxZoomString")
+                    } else {
+                        rasterMaxZoomString = "Cannot read RasterSource field:\nmaxZoom"
+                        Log.d("MAP_DEBUG", "RASTER_MAX_ZOOM=Cannot read RasterSource field: maxZoom")
+                    }
+
+                    // 5. Attribution
+                    val attrVal = invokeNoArgMethod(source, "getAttribution", "attribution")
+                    if (attrVal != null) {
+                        rasterAttributionString = attrVal.toString()
+                        Log.d("MAP_DEBUG", "RASTER_ATTRIBUTION=$rasterAttributionString")
+                    } else {
+                        rasterAttributionString = "Cannot read RasterSource field:\nattribution"
+                        Log.d("MAP_DEBUG", "RASTER_ATTRIBUTION=Cannot read RasterSource field: attribution")
+                    }
+
+                    // 6. Bounds
+                    val boundsVal = invokeNoArgMethod(source, "getBounds", "bounds")
+                    if (boundsVal != null) {
+                        rasterBoundsString = boundsVal.toString()
+                        Log.d("MAP_DEBUG", "RASTER_BOUNDS=$rasterBoundsString")
+                    } else {
+                        rasterBoundsString = "Cannot read RasterSource field:\nbounds"
+                        Log.d("MAP_DEBUG", "RASTER_BOUNDS=Cannot read RasterSource field: bounds")
+                    }
+
                     Log.d("MAP_DEBUG", "===== REFLECTING LAYER ZOOM METHODS =====")
                     offlineLayer?.javaClass?.methods?.forEach { m ->
                         if (m.name.contains("zoom", ignoreCase = true) && m.parameterTypes.isEmpty()) {
@@ -553,6 +659,11 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     }
 
     private fun updateDiagnosticHud() {
+        if (!isHudExpanded) {
+            hudDiagnosticCounters.text = "▶ 诊断信息"
+            return
+        }
+
         val sExists = sourceExists?.toString() ?: "Unknown"
         val lExists = layerExists?.toString() ?: "Unknown"
         val lClass = layerClassString ?: "Unknown"
@@ -570,8 +681,17 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val lMaxZoom = layerMaxZoomString ?: "Unknown"
         val sMinZoom = sourceMinZoomString ?: "Unknown"
         val sMaxZoom = sourceMaxZoomString ?: "Unknown"
+        val rTiles = rasterTilesString ?: "Unknown"
+        val rScheme = rasterSchemeString ?: "Unknown"
+        val rMinZoom = rasterMinZoomString ?: "Unknown"
+        val rMaxZoom = rasterMaxZoomString ?: "Unknown"
+        val rAttribution = rasterAttributionString ?: "Unknown"
+        val rBounds = rasterBoundsString ?: "Unknown"
+        val rMethods = rasterSourceAvailableMethodsString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
+
+        hudDiagnosticCounters.text = "▼ 诊断信息\n" +
+                "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
@@ -593,6 +713,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "LayerMaxZoom: $lMaxZoom\n\n" +
                 "SourceMinZoom: $sMinZoom\n" +
                 "SourceMaxZoom: $sMaxZoom\n\n" +
+                "RasterTiles:\n$rTiles\n\n" +
+                "RasterMinZoom:\n$rMinZoom\n\n" +
+                "RasterMaxZoom:\n$rMaxZoom\n\n" +
+                "RasterScheme:\n$rScheme\n\n" +
+                "RasterAttribution:\n$rAttribution\n\n" +
+                "RasterBounds:\n$rBounds\n\n" +
+                "RasterSourceAvailableMethods:\n$rMethods\n\n" +
                 "CameraZoom: $cZoom"
     }
 }
