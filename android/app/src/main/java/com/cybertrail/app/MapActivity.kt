@@ -282,8 +282,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                         layerVisibilityString = vis
                     }
 
-                    Log.d("MAP_DEBUG", "MAP_MINZOOM=${map.minZoomPreference}")
-                    Log.d("MAP_DEBUG", "MAP_MAXZOOM=${map.maxZoomPreference}")
                     Log.d("MAP_DEBUG", "CAMERA_ZOOM=${map.cameraPosition.zoom}")
                     cameraZoomFloat = map.cameraPosition.zoom.toFloat()
 
@@ -434,6 +432,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val sExists = sourceExists?.toString() ?: "Unknown"
         val lExists = layerExists?.toString() ?: "Unknown"
         val lClass = layerClassString ?: "Unknown"
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists\nLayerExists: $lExists\nLayerClass: $lClass"
+        val lSource = layerSourceId ?: "Unknown"
+        val lVis = layerVisibilityString ?: "Unknown"
+        val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists\nLayerExists: $lExists\nLayerClass: $lClass\nLayerSource: $lSource\nLayerVisibility: $lVis\nCameraZoom: $cZoom"
     }
 }
