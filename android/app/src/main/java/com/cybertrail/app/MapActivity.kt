@@ -45,6 +45,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var tileFoundCount = 0
     private var tileNotFoundCount = 0
     private var sourceExists: Boolean? = null
+    private var layerExists: Boolean? = null
+    private var layerClassString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -233,20 +235,31 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     Log.i(TAG, "Style loaded successfully with mbtiles HTTP server.")
                     Log.d(TAG, "STYLE_SUCCESS")
 
-                    Log.d("MAP_DEBUG", "===== STYLE SOURCES =====")
+                    Log.d("MAP_DEBUG", "===== STYLE SOURCES START =====")
                     style.sources.forEach {
                         Log.d("MAP_DEBUG", "SOURCE=${it.id}")
                     }
+                    Log.d("MAP_DEBUG", "===== STYLE SOURCES END =====")
 
-                    Log.d("MAP_DEBUG", "===== STYLE LAYERS =====")
+                    Log.d("MAP_DEBUG", "===== STYLE LAYERS START =====")
                     style.layers.forEach {
                         Log.d("MAP_DEBUG", "LAYER=${it.id}")
                     }
+                    Log.d("MAP_DEBUG", "===== STYLE LAYERS END =====")
 
                     val source = style.getSource("offline-mbtiles")
                     val isExist = source != null
                     sourceExists = isExist
                     Log.d("MAP_DEBUG", "SOURCE_EXISTS=$isExist")
+
+                    val offlineLayer = style.getLayer("offline-layer")
+                    val isLayerExist = offlineLayer != null
+                    layerExists = isLayerExist
+                    val clazzName = offlineLayer?.javaClass?.simpleName ?: "null"
+                    layerClassString = clazzName
+                    Log.d("MAP_DEBUG", "LAYER_EXISTS=$isLayerExist")
+                    Log.d("MAP_DEBUG", "LAYER_CLASS=$clazzName")
+
                     updateDiagnosticHud()
                 }
             } else {
@@ -386,6 +399,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
     private fun updateDiagnosticHud() {
         val sExists = sourceExists?.toString() ?: "Unknown"
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists"
+        val lExists = layerExists?.toString() ?: "Unknown"
+        val lClass = layerClassString ?: "Unknown"
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists\nLayerExists: $lExists\nLayerClass: $lClass"
     }
 }
