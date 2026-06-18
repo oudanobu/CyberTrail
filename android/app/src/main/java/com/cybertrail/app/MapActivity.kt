@@ -52,6 +52,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var cameraZoomFloat: Float? = null
     private var sourceRuntimeClassString: String? = null
     private var styleTileUrlString: String? = null
+    private var sourceTypeString: String? = null
+    private var sourceObjectString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -270,6 +272,27 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     sourceExists = isExist
                     Log.d("MAP_DEBUG", "SOURCE_EXISTS=$isExist")
 
+                    val sourceType = source?.javaClass?.simpleName ?: "null"
+                    sourceTypeString = sourceType
+                    Log.d("MAP_DEBUG", "SOURCE_TYPE=$sourceType")
+                    Log.d("MAP_DEBUG", "SOURCE_OBJECT=$source")
+                    sourceObjectString = source?.toString() ?: "null"
+
+                    val sourceTilesUrl = try {
+                        val methods = source?.javaClass?.methods ?: arrayOf()
+                        var foundUrl: String? = null
+                        for (m in methods) {
+                            if ((m.name == "getUri" || m.name == "getUrl") && m.parameterTypes.isEmpty()) {
+                                foundUrl = m.invoke(source) as? String
+                                break
+                            }
+                        }
+                        foundUrl
+                    } catch (e: Exception) {
+                        null
+                    }
+                    Log.d("MAP_DEBUG", "SOURCE_TILES_URL=$sourceTilesUrl")
+
                     val offlineLayer = style.getLayer("offline-layer")
                     val isLayerExist = offlineLayer != null
                     layerExists = isLayerExist
@@ -452,6 +475,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val lVis = layerVisibilityString ?: "Unknown"
         val srcRunClass = sourceRuntimeClassString ?: "Unknown"
         val sTileUrl = styleTileUrlString ?: "Unknown"
+        val srcType = sourceTypeString ?: "Unknown"
+        val srcObj = sourceObjectString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
         hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
@@ -463,6 +488,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "LayerClass: $lClass\n" +
                 "LayerSource: $lSource\n" +
                 "LayerVisibility: $lVis\n\n" +
+                "SourceType:\n$srcType\n\n" +
+                "SourceObject:\n$srcObj\n\n" +
                 "SourceRuntimeClass:\n$srcRunClass\n\n" +
                 "StyleTileUrl:\n$sTileUrl\n\n" +
                 "CameraZoom: $cZoom"
