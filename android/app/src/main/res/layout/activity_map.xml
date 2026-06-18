@@ -116,15 +116,48 @@
             android:text="Style加载: 等待加载..."
             android:textColor="@color/cyber_green"
             android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Floating Draggable, scrollable, collapsible diagnostic HUD panel -->
+    <LinearLayout
+        android:id="@+id/hud_diagnostic_panel"
+        android:layout_width="280dp"
+        android:layout_height="350dp"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"
+        android:layout_margin="16dp"
+        android:background="#E60F172A"
+        android:orientation="vertical"
+        android:elevation="8dp"
+        android:padding="8dp">
 
         <TextView
-            android:id="@+id/hud_diagnostic_counters"
+            android:id="@+id/hud_diagnostic_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="RenderFrame: 0\nCameraMove: 0\nTileRequest: 0\nTileFound: 0\nTileNotFound: 0"
+            android:text="▼ 诊断信息"
             android:textColor="@color/cyber_amber"
-            android:textSize="12sp"
-            android:layout_marginTop="4dp" />
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:padding="6dp"
+            android:background="#22FFFFFF"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <ScrollView
+            android:id="@+id/hud_diagnostic_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:id="@+id/hud_diagnostic_counters"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/cyber_amber"
+                android:textSize="12sp" />
+        </ScrollView>
     </LinearLayout>
 
 </RelativeLayout>

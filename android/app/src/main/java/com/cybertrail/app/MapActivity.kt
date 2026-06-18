@@ -10,6 +10,12 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
+import android.annotation.SuppressLint
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ScrollView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -118,10 +124,96 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         hudTileCount = findViewById(R.id.hud_tile_count)
         hudStyleStatus = findViewById(R.id.hud_style_status)
         hudDiagnosticCounters = findViewById(R.id.hud_diagnostic_counters)
-        hudDiagnosticCounters.isClickable = true
-        hudDiagnosticCounters.isFocusable = true
-        hudDiagnosticCounters.setOnClickListener {
+        val panelView = findViewById<LinearLayout>(R.id.hud_diagnostic_panel)
+        val titleView = findViewById<TextView>(R.id.hud_diagnostic_title)
+        val scrollView = findViewById<ScrollView>(R.id.hud_diagnostic_scroll)
+
+        titleView.setOnClickListener {
             isHudExpanded = !isHudExpanded
+            updateDiagnosticHud()
+        }
+
+        var isDragging = false
+        var lastX = 0f
+        var lastY = 0f
+
+        titleView.setOnLongClickListener {
+            isDragging = true
+            titleView.alpha = 0.7f
+            true
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        titleView.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastX = event.rawX
+                    lastY = event.rawY
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (isDragging) {
+                        val deltaX = event.rawX - lastX
+                        val deltaY = event.rawY - lastY
+                        
+                        panelView.x += deltaX
+                        panelView.y += deltaY
+                        
+                        lastX = event.rawX
+                        lastY = event.rawY
+                        
+                        updateDiagnosticHud()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        titleView.alpha = 1.0f
+                        
+                        // Snap to nearest corner (左上, 右上, 左下, 右下)
+                        val parent = panelView.parent as? View
+                        if (parent != null) {
+                            val pW = parent.width
+                            val pH = parent.height
+                            val viewW = panelView.width
+                            val viewH = panelView.height
+                            
+                            val curX = panelView.x
+                            val curY = panelView.y
+                            
+                            val margin = 16f * parent.resources.displayMetrics.density
+                            
+                            val targetX = if (curX + viewW / 2 < pW / 2) {
+                                margin
+                            } else {
+                                pW - viewW - margin
+                            }
+                            
+                            val targetY = if (curY + viewH / 2 < pH / 2) {
+                                margin
+                            } else {
+                                pH - viewH - margin
+                            }
+                            
+                            panelView.animate()
+                                .x(targetX)
+                                .y(targetY)
+                                .setDuration(250)
+                                .withEndAction {
+                                    updateDiagnosticHud()
+                                }
+                                .start()
+                        }
+                    } else {
+                        if (event.action == MotionEvent.ACTION_UP) {
+                            v.performClick()
+                        }
+                    }
+                }
+            }
+            true
+        }
+
+        scrollView.viewTreeObserver.addOnScrollChangedListener {
             updateDiagnosticHud()
         }
 
@@ -659,10 +751,27 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     }
 
     private fun updateDiagnosticHud() {
+        val panelView = findViewById<LinearLayout>(R.id.hud_diagnostic_panel)
+        val scrollView = findViewById<ScrollView>(R.id.hud_diagnostic_scroll)
+        val titleView = findViewById<TextView>(R.id.hud_diagnostic_title)
+
+        if (panelView == null || scrollView == null || titleView == null) return
+
         if (!isHudExpanded) {
-            hudDiagnosticCounters.text = "▶ 诊断信息"
+            titleView.text = "▶ 诊断信息"
+            scrollView.visibility = View.GONE
+            val params = panelView.layoutParams
+            params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            panelView.layoutParams = params
             return
         }
+
+        titleView.text = "▼ 诊断信息"
+        scrollView.visibility = View.VISIBLE
+        val params = panelView.layoutParams
+        val density = resources.displayMetrics.density
+        params.height = (350 * density).toInt()
+        panelView.layoutParams = params
 
         val sExists = sourceExists?.toString() ?: "Unknown"
         val lExists = layerExists?.toString() ?: "Unknown"
@@ -690,8 +799,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val rMethods = rasterSourceAvailableMethodsString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
 
-        hudDiagnosticCounters.text = "▼ 诊断信息\n" +
-                "RenderFrame: $renderFrameCount\n" +
+        val hudHeight = panelView.height
+        val scrollY = scrollView.scrollY
+
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
@@ -720,6 +831,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "RasterAttribution:\n$rAttribution\n\n" +
                 "RasterBounds:\n$rBounds\n\n" +
                 "RasterSourceAvailableMethods:\n$rMethods\n\n" +
-                "CameraZoom: $cZoom"
+                "CameraZoom: $cZoom\n\n" +
+                "HUDHeight: ${hudHeight}px\n" +
+                "ScrollY: $scrollY"
     }
 }
