@@ -244,11 +244,23 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     }
                     Log.d("MAP_DEBUG", "===== STYLE SOURCES END =====")
 
+                    style.sources.forEach {
+                        Log.d("MAP_DEBUG", "SOURCE_CLASS=${it.javaClass.name}")
+                    }
+
+                    style.getSource("offline-mbtiles")?.let {
+                        Log.d("MAP_DEBUG", "SOURCE_RUNTIME_CLASS=${it.javaClass.name}")
+                    }
+
                     Log.d("MAP_DEBUG", "===== STYLE LAYERS START =====")
                     style.layers.forEach {
                         Log.d("MAP_DEBUG", "LAYER=${it.id}")
                     }
                     Log.d("MAP_DEBUG", "===== STYLE LAYERS END =====")
+
+                    style.layers.forEach {
+                        Log.d("MAP_DEBUG", "LAYER_ID=${it.id}")
+                    }
 
                     val source = style.getSource("offline-mbtiles")
                     val isExist = source != null
@@ -287,8 +299,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
                     val tilesUrlRegex = Regex("\"tiles\"\\s*:\\s*\\[\\s*\"([^\"]+)\"")
                     val match = tilesUrlRegex.find(styleJson)
-                    val tileUrlFromStyleJson = match?.groupValues?.get(1) ?: "not found in JSON"
-                    Log.d("MAP_DEBUG", "STYLE_JSON_TILE_URL=$tileUrlFromStyleJson")
+                    val tileUrl = match?.groupValues?.get(1) ?: "not found in JSON"
+                    Log.d("MAP_DEBUG", "STYLE_JSON_TILE_URL=$tileUrl")
 
                     updateDiagnosticHud()
                 }
