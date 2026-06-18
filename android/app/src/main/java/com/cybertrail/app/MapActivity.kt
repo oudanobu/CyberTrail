@@ -54,6 +54,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var styleTileUrlString: String? = null
     private var sourceTypeString: String? = null
     private var sourceObjectString: String? = null
+    private var sourceCountInt: Int? = null
+    private var layerCountInt: Int? = null
+    private var sourceListString: String? = null
+    private var layerListString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -329,6 +333,22 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     Log.d("MAP_DEBUG", "STYLE_JSON_TILE_URL=$tileUrl")
                     styleTileUrlString = tileUrl
 
+                    val sCount = style.sources.size
+                    sourceCountInt = sCount
+                    Log.d("MAP_DEBUG", "SOURCE_COUNT=$sCount")
+
+                    val lCount = style.layers.size
+                    layerCountInt = lCount
+                    Log.d("MAP_DEBUG", "LAYER_COUNT=$lCount")
+
+                    val sList = style.sources.joinToString(",") { it.id }
+                    sourceListString = sList
+                    Log.d("MAP_DEBUG", "SOURCE_LIST=$sList")
+
+                    val lList = style.layers.joinToString(",") { it.id }
+                    layerListString = lList
+                    Log.d("MAP_DEBUG", "LAYER_LIST=$lList")
+
                     updateDiagnosticHud()
                 }
             } else {
@@ -477,6 +497,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val sTileUrl = styleTileUrlString ?: "Unknown"
         val srcType = sourceTypeString ?: "Unknown"
         val srcObj = sourceObjectString ?: "Unknown"
+        val sCount = sourceCountInt?.toString() ?: "Unknown"
+        val lCount = layerCountInt?.toString() ?: "Unknown"
+        val sList = sourceListString ?: "Unknown"
+        val lList = layerListString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
         hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
@@ -492,6 +516,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "SourceObject:\n$srcObj\n\n" +
                 "SourceRuntimeClass:\n$srcRunClass\n\n" +
                 "StyleTileUrl:\n$sTileUrl\n\n" +
+                "SourceCount: $sCount\n" +
+                "LayerCount: $lCount\n\n" +
+                "SourceList:\n$sList\n\n" +
+                "LayerList:\n$lList\n\n" +
                 "CameraZoom: $cZoom"
     }
 }
