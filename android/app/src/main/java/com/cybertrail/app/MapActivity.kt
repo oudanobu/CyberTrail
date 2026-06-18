@@ -58,6 +58,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var layerCountInt: Int? = null
     private var sourceListString: String? = null
     private var layerListString: String? = null
+    private var layerMinZoomString: String? = null
+    private var layerMaxZoomString: String? = null
+    private var sourceMinZoomString: String? = null
+    private var sourceMaxZoomString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -349,6 +353,67 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     layerListString = lList
                     Log.d("MAP_DEBUG", "LAYER_LIST=$lList")
 
+                    val lMin = try {
+                        val method = offlineLayer?.javaClass?.methods?.firstOrNull {
+                            it.name.equals("getMinZoom", ignoreCase = true) || it.name.equals("minZoom", ignoreCase = true)
+                        }
+                        method?.invoke(offlineLayer)?.toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                    layerMinZoomString = lMin ?: "Unknown"
+                    Log.d("MAP_DEBUG", "LayerMinZoom: $layerMinZoomString")
+
+                    val lMax = try {
+                        val method = offlineLayer?.javaClass?.methods?.firstOrNull {
+                            it.name.equals("getMaxZoom", ignoreCase = true) || it.name.equals("maxZoom", ignoreCase = true)
+                        }
+                        method?.invoke(offlineLayer)?.toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                    layerMaxZoomString = lMax ?: "Unknown"
+                    Log.d("MAP_DEBUG", "LayerMaxZoom: $layerMaxZoomString")
+
+                    val sMin = try {
+                        val method = source?.javaClass?.methods?.firstOrNull {
+                            it.name.equals("getMinZoom", ignoreCase = true) || it.name.equals("getMinzoom", ignoreCase = true) || it.name.equals("minZoom", ignoreCase = true) || it.name.equals("minzoom", ignoreCase = true)
+                        }
+                        method?.invoke(source)?.toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                    sourceMinZoomString = sMin ?: "Unknown"
+                    Log.d("MAP_DEBUG", "SourceMinZoom: $sourceMinZoomString")
+
+                    val sMax = try {
+                        val method = source?.javaClass?.methods?.firstOrNull {
+                            it.name.equals("getMaxZoom", ignoreCase = true) || it.name.equals("getMaxzoom", ignoreCase = true) || it.name.equals("maxZoom", ignoreCase = true) || it.name.equals("maxzoom", ignoreCase = true)
+                        }
+                        method?.invoke(source)?.toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                    sourceMaxZoomString = sMax ?: "Unknown"
+                    Log.d("MAP_DEBUG", "SourceMaxZoom: $sourceMaxZoomString")
+
+                    Log.d("MAP_DEBUG", "===== REFLECTING LAYER ZOOM METHODS =====")
+                    offlineLayer?.javaClass?.methods?.forEach { m ->
+                        if (m.name.contains("zoom", ignoreCase = true) && m.parameterTypes.isEmpty()) {
+                            try {
+                                Log.d("MAP_DEBUG", "LAYER_METHOD:${m.name}=${m.invoke(offlineLayer)}")
+                            } catch(e: Exception) {}
+                        }
+                    }
+                    Log.d("MAP_DEBUG", "===== REFLECTING SOURCE ZOOM METHODS =====")
+                    source?.javaClass?.methods?.forEach { m ->
+                        if (m.name.contains("zoom", ignoreCase = true) && m.parameterTypes.isEmpty()) {
+                            try {
+                                Log.d("MAP_DEBUG", "SOURCE_METHOD:${m.name}=${m.invoke(source)}")
+                            } catch(e: Exception) {}
+                        }
+                    }
+
                     updateDiagnosticHud()
                 }
             } else {
@@ -501,6 +566,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val lCount = layerCountInt?.toString() ?: "Unknown"
         val sList = sourceListString ?: "Unknown"
         val lList = layerListString ?: "Unknown"
+        val lMinZoom = layerMinZoomString ?: "Unknown"
+        val lMaxZoom = layerMaxZoomString ?: "Unknown"
+        val sMinZoom = sourceMinZoomString ?: "Unknown"
+        val sMaxZoom = sourceMaxZoomString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
         hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
@@ -520,6 +589,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "LayerCount: $lCount\n\n" +
                 "SourceList:\n$sList\n\n" +
                 "LayerList:\n$lList\n\n" +
+                "LayerMinZoom: $lMinZoom\n" +
+                "LayerMaxZoom: $lMaxZoom\n\n" +
+                "SourceMinZoom: $sMinZoom\n" +
+                "SourceMaxZoom: $sMaxZoom\n\n" +
                 "CameraZoom: $cZoom"
     }
 }
