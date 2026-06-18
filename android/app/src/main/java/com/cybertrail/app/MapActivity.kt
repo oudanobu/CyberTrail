@@ -50,6 +50,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var layerSourceId: String? = null
     private var layerVisibilityString: String? = null
     private var cameraZoomFloat: Float? = null
+    private var sourceRuntimeClassString: String? = null
+    private var styleTileUrlString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -250,6 +252,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
                     style.getSource("offline-mbtiles")?.let {
                         Log.d("MAP_DEBUG", "SOURCE_RUNTIME_CLASS=${it.javaClass.name}")
+                        sourceRuntimeClassString = it.javaClass.name
                     }
 
                     Log.d("MAP_DEBUG", "===== STYLE LAYERS START =====")
@@ -301,6 +304,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     val match = tilesUrlRegex.find(styleJson)
                     val tileUrl = match?.groupValues?.get(1) ?: "not found in JSON"
                     Log.d("MAP_DEBUG", "STYLE_JSON_TILE_URL=$tileUrl")
+                    styleTileUrlString = tileUrl
 
                     updateDiagnosticHud()
                 }
@@ -446,7 +450,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val lClass = layerClassString ?: "Unknown"
         val lSource = layerSourceId ?: "Unknown"
         val lVis = layerVisibilityString ?: "Unknown"
+        val srcRunClass = sourceRuntimeClassString ?: "Unknown"
+        val sTileUrl = styleTileUrlString ?: "Unknown"
         val cZoom = cameraZoomFloat?.toString() ?: "Unknown"
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\nCameraMove: $cameraMoveCount\nTileRequest: $tileRequestCount\nTileFound: $tileFoundCount\nTileNotFound: $tileNotFoundCount\nSourceExists: $sExists\nLayerExists: $lExists\nLayerClass: $lClass\nLayerSource: $lSource\nLayerVisibility: $lVis\nCameraZoom: $cZoom"
+        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
+                "CameraMove: $cameraMoveCount\n" +
+                "TileRequest: $tileRequestCount\n" +
+                "TileFound: $tileFoundCount\n" +
+                "TileNotFound: $tileNotFoundCount\n\n" +
+                "SourceExists: $sExists\n" +
+                "LayerExists: $lExists\n" +
+                "LayerClass: $lClass\n" +
+                "LayerSource: $lSource\n" +
+                "LayerVisibility: $lVis\n\n" +
+                "SourceRuntimeClass:\n$srcRunClass\n\n" +
+                "StyleTileUrl:\n$sTileUrl\n\n" +
+                "CameraZoom: $cZoom"
     }
 }
