@@ -76,6 +76,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var rasterBoundsString: String? = null
     private var rasterSourceAvailableMethodsString: String? = null
     private var isHudExpanded: Boolean = true
+    private var finalStyleJsonString: String? = null
+    private var layerSourceLayerString: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -344,6 +346,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 localTileServer?.start()
 
                 styleJson = styleJson.replace("mbtiles://{mbtiles_path}", "http://127.0.0.1:${localTileServer?.port ?: 8080}/{z}/{x}/{y}.png")
+                finalStyleJsonString = styleJson
                 
                 Log.d("MAP_DEBUG", "===== FINAL STYLE JSON START =====")
                 Log.d("MAP_DEBUG", styleJson)
@@ -424,6 +427,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                         }
                         Log.d("MAP_DEBUG", "LAYER_SOURCE=$srcId")
                         layerSourceId = srcId
+
+                        val srcLayer = try {
+                            val getter = offlineLayer.javaClass.getMethod("getSourceLayer")
+                            getter.invoke(offlineLayer) as? String
+                        } catch (e: Exception) {
+                            null
+                        }
+                        Log.d("MAP_DEBUG", "LAYER_SOURCE_LAYER=$srcLayer")
+                        layerSourceLayerString = srcLayer
 
                         val vis = try {
                             offlineLayer.visibility?.value?.toString()
@@ -634,6 +646,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                     "    }\n" +
                     "  ]\n" +
                     "}"
+                finalStyleJsonString = fallbackStyle
                 Log.d("CYBERTRAIL_MAP", "setStyle begin")
                 map.setStyle(Style.Builder().fromJson(fallbackStyle)) { style ->
                     Log.d("CYBERTRAIL_MAP", "STYLE_SUCCESS")
@@ -802,11 +815,20 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val hudHeight = panelView.height
         val scrollY = scrollView.scrollY
 
+        val lSourceLayer = layerSourceLayerString ?: "Unknown"
+        val fStyleJson = finalStyleJsonString ?: "None"
+
         hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
                 "TileNotFound: $tileNotFoundCount\n\n" +
+                "Offline Layer Config:\n" +
+                "source=$lSource\n" +
+                "source-layer=$lSourceLayer\n" +
+                "minzoom=$lMinZoom\n" +
+                "maxzoom=$lMaxZoom\n" +
+                "visibility=$lVis\n\n" +
                 "SourceExists: $sExists\n" +
                 "LayerExists: $lExists\n" +
                 "LayerClass: $lClass\n" +
@@ -832,6 +854,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "RasterBounds:\n$rBounds\n\n" +
                 "RasterSourceAvailableMethods:\n$rMethods\n\n" +
                 "CameraZoom: $cZoom\n\n" +
+                "FINAL_STYLE_JSON:\n$fStyleJson\n\n" +
                 "HUDHeight: ${hudHeight}px\n" +
                 "ScrollY: $scrollY"
     }
