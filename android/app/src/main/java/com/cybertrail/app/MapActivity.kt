@@ -186,6 +186,23 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 val file = java.io.File(parentDir, fileName)
                 
                 val currentTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                
+                val currentStyle = try {
+                    mapboxMap?.style
+                } catch (ex: Exception) {
+                    null
+                }
+                val expStyleToJson = try {
+                    val toJsonMethod = currentStyle?.javaClass?.methods?.firstOrNull { it.name == "toJson" || it.name == "getJson" }
+                    if (toJsonMethod != null) {
+                        toJsonMethod.invoke(currentStyle)?.toString() ?: "None"
+                    } else {
+                        "Style.toJson() method not found (loaded json fallback):\n${finalStyleJsonString ?: "None"}"
+                    }
+                } catch (ex: Exception) {
+                    "Error: ${ex.message}"
+                }
+
                 val txtContent = """
 ========================================
 CYBERTRAIL DIAGNOSTIC FILE
@@ -194,6 +211,9 @@ Timestamp: $currentTimestamp
 
 --- DIAGNOSTIC INFORMATION ---
 ${hudDiagnosticCounters.text}
+
+--- STYLE.TOJSON() ---
+$expStyleToJson
 
 --- FINAL STYLE JSON ---
 ${finalStyleJsonString ?: "None"}
@@ -942,6 +962,73 @@ ${finalStyleJsonString ?: "None"}
 
         val map = mapboxMap
 
+        val currentStyle = try {
+            map?.style
+        } catch (e: Exception) {
+            null
+        }
+
+        val styleAttachedToMapStr = (currentStyle != null).toString()
+
+        var offlineSourceNullStr = "Unknown"
+        var offlineSourceClassStr = "None"
+        var offlineSourceIdStr = "None"
+        var rasterSourceUrlStr = "None"
+        var rasterSourceUriStr = "None"
+        var styleLayersSizeStr = "Unknown"
+        var styleSourcesSizeStr = "Unknown"
+        var layerSourceMatchStr = "Unknown"
+        var layerSourceValueStr = "None"
+        var styleToJsonStr = "None"
+
+        if (currentStyle != null) {
+            val offlineSource = currentStyle.getSource("offline-mbtiles")
+            offlineSourceNullStr = (offlineSource == null).toString()
+            offlineSourceClassStr = offlineSource?.javaClass?.name ?: "None"
+            offlineSourceIdStr = offlineSource?.id ?: "None"
+
+            val isRasterSource = offlineSource != null && offlineSource.javaClass.simpleName.contains("RasterSource")
+            if (isRasterSource) {
+                rasterSourceUrlStr = try {
+                    val m = offlineSource?.javaClass?.getMethod("getUrl")
+                    m?.invoke(offlineSource)?.toString() ?: "None"
+                } catch (e: Exception) {
+                    "None"
+                }
+
+                rasterSourceUriStr = try {
+                    val m = offlineSource?.javaClass?.getMethod("getUri")
+                    m?.invoke(offlineSource)?.toString() ?: "None"
+                } catch (e: Exception) {
+                    "None"
+                }
+            }
+
+            styleToJsonStr = try {
+                val toJsonMethod = currentStyle.javaClass.methods.firstOrNull { it.name == "toJson" || it.name == "getJson" }
+                if (toJsonMethod != null) {
+                    toJsonMethod.invoke(currentStyle)?.toString() ?: "None"
+                } else {
+                    "Style.toJson() method not found (using loaded json fallback)\n$fStyleJson"
+                }
+            } catch (e: Exception) {
+                "Error calling Style.toJson(): ${e.message}"
+            }
+
+            styleLayersSizeStr = currentStyle.layers.size.toString()
+            styleSourcesSizeStr = currentStyle.sources.size.toString()
+
+            val offlineLayerObj = currentStyle.getLayer("offline-layer")
+            val lSrcIdVal = try {
+                val getter = offlineLayerObj?.javaClass?.getMethod("getSourceId")
+                getter?.invoke(offlineLayerObj) as? String
+            } catch (e: Exception) {
+                null
+            }
+            layerSourceMatchStr = if (offlineLayerObj == null) "Unknown" else (lSrcIdVal == "offline-mbtiles").toString()
+            layerSourceValueStr = lSrcIdVal ?: "None"
+        }
+
         val currentLatitudeStr = if (lastGpsLatitude != null) "$lastGpsLatitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.latitude} (CameraCenter)" else "Unknown"
         val currentLongitudeStr = if (lastGpsLongitude != null) "$lastGpsLongitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.longitude} (CameraCenter)" else "Unknown"
 
@@ -1086,6 +1173,17 @@ ${finalStyleJsonString ?: "None"}
                 "RasterSourceAvailableMethods:\n$rMethods\n\n" +
                 "CameraZoom: $cZoom\n\n" +
                 "FINAL_STYLE_JSON:\n$fStyleJson\n\n" +
+                "StyleAttachedToMap: $styleAttachedToMapStr\n\n" +
+                "OfflineSourceNull: $offlineSourceNullStr\n" +
+                "OfflineSourceClass: $offlineSourceClassStr\n" +
+                "OfflineSourceId: $offlineSourceIdStr\n\n" +
+                "RasterSourceUrl: $rasterSourceUrlStr\n" +
+                "RasterSourceUri: $rasterSourceUriStr\n\n" +
+                "style.layers.size: $styleLayersSizeStr\n" +
+                "style.sources.size: $styleSourcesSizeStr\n\n" +
+                "LayerSourceMatch: $layerSourceMatchStr\n" +
+                "LayerSourceValue: $layerSourceValueStr\n\n" +
+                "style.toJson():\n$styleToJsonStr\n\n" +
                 "ForcedZoomApplied: $forcedZoomApplied\n\n" +
                 "HUDHeight: ${hudHeight}px\n" +
                 "ScrollY: $scrollY"
