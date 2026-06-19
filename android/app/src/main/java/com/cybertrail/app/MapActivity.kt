@@ -19,6 +19,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.drawerlayout.widget.DrawerLayout
+import androidx.core.view.GravityCompat
 import com.cybertrail.app.gis.DEMSystem
 import com.mapbox.mapboxsdk.Mapbox
 import com.mapbox.mapboxsdk.maps.MapView
@@ -126,6 +128,35 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         }
 
         // Bind layouts
+        val drawerLayout = findViewById<DrawerLayout>(R.id.drawer_layout)
+        val drawerView = findViewById<ScrollView>(R.id.drawer_scroll_view)
+
+        // Set drawer width to exactly 80% screen width
+        try {
+            val displayMetrics = resources.displayMetrics
+            val drawerWidth = (displayMetrics.widthPixels * 0.8).toInt()
+            val drawerLayoutParams = drawerView.layoutParams
+            drawerLayoutParams.width = drawerWidth
+            drawerView.layoutParams = drawerLayoutParams
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting drawer width dynamically", e)
+        }
+
+        val btnMenu = findViewById<TextView>(R.id.btn_menu)
+        val btnMenuDrawerClose = findViewById<TextView>(R.id.btn_menu_drawer_close)
+
+        btnMenu.setOnClickListener {
+            if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                drawerLayout.closeDrawer(GravityCompat.START)
+            } else {
+                drawerLayout.openDrawer(GravityCompat.START)
+            }
+        }
+
+        btnMenuDrawerClose.setOnClickListener {
+            drawerLayout.closeDrawer(GravityCompat.START)
+        }
+
         mapView = findViewById(R.id.mapView)
         hudElevation = findViewById(R.id.hud_elevation)
         hudSlope = findViewById(R.id.hud_slope)

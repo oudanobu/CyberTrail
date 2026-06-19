@@ -1,222 +1,297 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="false"
     android:background="@color/cyber_slate">
 
-    <!-- MapLibre MapView -->
-    <com.mapbox.mapboxsdk.maps.MapView
-        android:id="@+id/mapView"
+    <!-- Screen Content: Map View and the ☰ Button -->
+    <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent">
 
-    <!-- Top HUD: GIS Telemetry -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_margin="16dp"
-        android:background="#DD0F172A"
-        android:orientation="vertical"
-        android:padding="12dp">
+        <!-- MapLibre MapView -->
+        <com.mapbox.mapboxsdk.maps.MapView
+            android:id="@+id/mapView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
 
+        <!-- Menu button ☰ -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="▼ 实时地形/GIS遥测"
+            android:id="@+id/btn_menu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"
+            android:layout_marginLeft="16dp"
+            android:layout_marginTop="36dp"
+            android:background="#E60F172A"
+            android:gravity="center"
+            android:text="☰"
             android:textColor="@color/cyber_green"
-            android:textSize="12sp"
+            android:textSize="24sp"
             android:textStyle="bold"
-            android:layout_marginBottom="6dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/hud_elevation"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="海拔: 获取中..."
-                android:textColor="@color/white"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/hud_slope"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="坡度: 获取中..."
-                android:textColor="@color/white"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/hud_aspect"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="坡向: 获取中..."
-                android:textColor="@color/white"
-                android:textSize="14sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Bottom HUD: MBTiles Diagnosis & GPS -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_margin="16dp"
-        android:background="#DD0F172A"
-        android:orientation="vertical"
-        android:padding="12dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="▼ 离线底图底子/物理包状态诊断"
-            android:textColor="@color/cyber_amber"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="6dp" />
-
-        <TextView
-            android:id="@+id/hud_mbtiles_path"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="路径: "
-            android:textColor="@color/cyber_light_gray"
-            android:textSize="11sp"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/hud_mbtiles_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="物理文件: 检测中..."
-            android:textColor="@color/white"
-            android:textSize="12sp"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/hud_tile_count"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="地图瓦片数: 检测中..."
-            android:textColor="@color/white"
-            android:textSize="12sp"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/hud_style_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Style加载: 等待加载..."
-            android:textColor="@color/cyber_green"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- Floating Draggable, scrollable, collapsible diagnostic HUD panel -->
-    <LinearLayout
-        android:id="@+id/hud_diagnostic_panel"
-        android:layout_width="280dp"
-        android:layout_height="350dp"
-        android:layout_alignParentRight="true"
-        android:layout_centerVertical="true"
-        android:layout_margin="16dp"
-        android:background="#E60F172A"
-        android:orientation="vertical"
-        android:elevation="8dp"
-        android:padding="8dp">
-
-        <TextView
-            android:id="@+id/hud_diagnostic_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="▼ 诊断信息"
-            android:textColor="@color/cyber_amber"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:padding="6dp"
-            android:background="#22FFFFFF"
+            android:elevation="12dp"
             android:clickable="true"
             android:focusable="true"/>
 
+    </RelativeLayout>
+
+    <!-- Side Menu / Drawer (sliding from start/left) -->
+    <ScrollView
+        android:id="@+id/drawer_scroll_view"
+        android:layout_width="320dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@drawable/drawer_bg"
+        android:padding="16dp"
+        android:scrollbars="vertical">
+
         <LinearLayout
-            android:id="@+id/hud_diagnostic_buttons"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="4dp">
+            android:orientation="vertical">
 
+            <!-- Drawer Header: title and drawer close/toggle ☰ button -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:layout_marginTop="20dp">
+
+                <!-- Drawer close toggle ☰ button -->
+                <TextView
+                    android:id="@+id/btn_menu_drawer_close"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_alignParentLeft="true"
+                    android:layout_alignParentTop="true"
+                    android:background="#22FFFFFF"
+                    android:gravity="center"
+                    android:text="☰"
+                    android:textColor="@color/cyber_green"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_toRightOf="@id/btn_menu_drawer_close"
+                    android:layout_centerVertical="true"
+                    android:layout_marginLeft="16dp"
+                    android:text="CyberTrail 诊断中心"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+            </RelativeLayout>
+
+            <!-- Top HUD: GIS Telemetry -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2">
+                android:background="#DD0F172A"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:layout_marginBottom="16dp">
 
                 <TextView
-                    android:id="@+id/btn_copy_diagnostic"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginRight="4dp"
-                    android:background="#44FFFFFF"
-                    android:text="📋 复制诊断信息"
-                    android:textColor="#FFFFFF"
-                    android:textSize="9sp"
-                    android:gravity="center"
-                    android:padding="6dp"
-                    android:clickable="true"
-                    android:focusable="true"/>
+                    android:text="▼ 实时地形/GIS遥测"
+                    android:textColor="@color/cyber_green"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
 
-                <TextView
-                    android:id="@+id/btn_copy_json"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginLeft="4dp"
-                    android:background="#44FFFFFF"
-                    android:text="📋 复制Style JSON"
-                    android:textColor="#FFFFFF"
-                    android:textSize="9sp"
-                    android:gravity="center"
-                    android:padding="6dp"
-                    android:clickable="true"
-                    android:focusable="true"/>
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/hud_elevation"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="海拔: 获取中..."
+                        android:textColor="@color/white"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/hud_slope"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="坡度: 获取中..."
+                        android:textColor="@color/white"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/hud_aspect"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="坡向: 获取中..."
+                        android:textColor="@color/white"
+                        android:textSize="14sp" />
+                </LinearLayout>
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/btn_export_diagnostic"
+            <!-- Bottom HUD: MBTiles Diagnosis & GPS -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:background="#44FFFFFF"
-                android:text="📤 导出诊断TXT"
-                android:textColor="#FFFFFF"
-                android:textSize="10sp"
-                android:gravity="center"
-                android:padding="6dp"
-                android:clickable="true"
-                android:focusable="true"/>
+                android:background="#DD0F172A"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▼ 离线底图底子/物理包状态诊断"
+                    android:textColor="@color/cyber_amber"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:id="@+id/hud_mbtiles_path"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="路径: "
+                    android:textColor="@color/cyber_light_gray"
+                    android:textSize="11sp"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/hud_mbtiles_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="物理文件: 检测中..."
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/hud_tile_count"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="地图瓦片数: 检测中..."
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/hud_style_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Style加载: 等待加载..."
+                    android:textColor="@color/cyber_green"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Floating Draggable, scrollable, collapsible diagnostic HUD panel -->
+            <LinearLayout
+                android:id="@+id/hud_diagnostic_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#E60F172A"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:id="@+id/hud_diagnostic_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="▼ 诊断信息"
+                    android:textColor="@color/cyber_amber"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:padding="6dp"
+                    android:background="#22FFFFFF"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <LinearLayout
+                    android:id="@+id/hud_diagnostic_buttons"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="4dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:weightSum="2">
+
+                        <TextView
+                            android:id="@+id/btn_copy_diagnostic"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginRight="4dp"
+                            android:background="#44FFFFFF"
+                            android:text="📋 复制诊断信息"
+                            android:textColor="#FFFFFF"
+                            android:textSize="9sp"
+                            android:gravity="center"
+                            android:padding="6dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/btn_copy_json"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginLeft="4dp"
+                            android:background="#44FFFFFF"
+                            android:text="📋 复制Style JSON"
+                            android:textColor="#FFFFFF"
+                            android:textSize="9sp"
+                            android:gravity="center"
+                            android:padding="6dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btn_export_diagnostic"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:background="#44FFFFFF"
+                        android:text="📤 导出诊断TXT"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp"
+                        android:gravity="center"
+                        android:padding="6dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+                </LinearLayout>
+
+                <ScrollView
+                    android:id="@+id/hud_diagnostic_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:id="@+id/hud_diagnostic_counters"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/cyber_amber"
+                        android:textSize="12sp" />
+                </ScrollView>
+            </LinearLayout>
+
         </LinearLayout>
+    </ScrollView>
 
-        <ScrollView
-            android:id="@+id/hud_diagnostic_scroll"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="4dp">
-
-            <TextView
-                android:id="@+id/hud_diagnostic_counters"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/cyber_amber"
-                android:textSize="12sp" />
-        </ScrollView>
-    </LinearLayout>
-
-</RelativeLayout>
+</androidx.drawerlayout.widget.DrawerLayout>
