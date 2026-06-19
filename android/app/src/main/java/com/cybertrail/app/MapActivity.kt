@@ -82,6 +82,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var lastGpsLatitude: Double? = null
     private var lastGpsLongitude: Double? = null
     private val httpRequestsHistory = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private var cameraForcedTestResult: String = "Not started"
 
     private lateinit var locationManager: LocationManager
 
@@ -741,6 +742,7 @@ ${finalStyleJsonString ?: "None"}
                         Log.e(TAG, "Failed to force camera zoom to 10.0", e)
                     }
 
+                    runCameraForcedTest(map)
                     updateDiagnosticHud()
                 }
             } else {
@@ -774,6 +776,7 @@ ${finalStyleJsonString ?: "None"}
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to force camera zoom to 10.0 in fallback callback", e)
                     }
+                    runCameraForcedTest(map)
                     updateDiagnosticHud()
                 }
             }
@@ -1114,7 +1117,10 @@ ${finalStyleJsonString ?: "None"}
             "Error: ${e.message}"
         }
 
-        hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
+        hudDiagnosticCounters.text = "--- CAMERA FORCED TEST ---\n" +
+                cameraForcedTestResult + "\n" +
+                "========================================\n\n" +
+                "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
@@ -1187,5 +1193,112 @@ ${finalStyleJsonString ?: "None"}
                 "ForcedZoomApplied: $forcedZoomApplied\n\n" +
                 "HUDHeight: ${hudHeight}px\n" +
                 "ScrollY: $scrollY"
+    }
+
+    private fun runCameraForcedTest(map: MapboxMap) {
+        val buildLog = StringBuilder()
+        
+        val beforeCenter = map.cameraPosition?.target
+        val beforeZoom = map.cameraPosition?.zoom
+        
+        buildLog.append("BEFORE_FORCE_CAMERA:\n")
+        buildLog.append("CameraCenter=${beforeCenter?.latitude ?: "None"},${beforeCenter?.longitude ?: "None"}\n")
+        buildLog.append("CameraZoom=${beforeZoom ?: "None"}\n\n")
+        
+        Log.d("CYBERTRAIL_CAMERA_TEST", "BEFORE_FORCE_CAMERA:\nCameraCenter=${beforeCenter?.latitude ?: "None"},${beforeCenter?.longitude ?: "None"}\nCameraZoom=${beforeZoom ?: "None"}")
+
+        try {
+            map.setMinZoomPreference(1.0)
+            map.setMaxZoomPreference(18.0)
+            
+            map.moveCamera(
+                com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngZoom(
+                    com.mapbox.mapboxsdk.geometry.LatLng(40.123665, 124.389216),
+                    5.0
+                )
+            )
+        } catch (e: Exception) {
+            buildLog.append("ERROR_FORCE_CAMERA: ${e.message}\n\n")
+            Log.e("CYBERTRAIL_CAMERA_TEST", "Error executing force camera", e)
+        }
+
+        cameraForcedTestResult = buildLog.toString()
+        runOnUiThread {
+            updateDiagnosticHud()
+        }
+
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        handler.postDelayed({
+            val afterCenter = map.cameraPosition?.target
+            val afterZoom = map.cameraPosition?.zoom
+            val bounds = try {
+                map.projection?.visibleRegion?.latLngBounds?.toString() ?: "None"
+            } catch (e: Exception) {
+                "Error: ${e.message}"
+            }
+            val visibleRegion = try {
+                map.projection?.visibleRegion?.toString() ?: "None"
+            } catch (e: Exception) {
+                "Error: ${e.message}"
+            }
+            
+            val server = localTileServer
+            val sReqCount = server?.requestCountTotal ?: 0
+            val sTileReqCount = server?.requestCountTile ?: 0
+            
+            val buildLogAfter = StringBuilder()
+            buildLogAfter.append("AFTER_FORCE_CAMERA:\n")
+            buildLogAfter.append("CameraCenter=${afterCenter?.latitude ?: "None"},${afterCenter?.longitude ?: "None"}\n")
+            buildLogAfter.append("CameraZoom=${afterZoom ?: "None"}\n\n")
+            
+            buildLogAfter.append("CameraBounds=$bounds\n")
+            buildLogAfter.append("VisibleRegion=$visibleRegion\n\n")
+            
+            buildLogAfter.append("ServerRequestCount=$sReqCount\n")
+            buildLogAfter.append("ServerTileRequestCount=$sTileReqCount\n")
+            buildLogAfter.append("TileRequest=$tileRequestCount\n")
+            buildLogAfter.append("TileFound=$tileFoundCount\n")
+            buildLogAfter.append("TileNotFound=$tileNotFoundCount\n\n")
+            
+            if (sReqCount == 0) {
+                val projCenter = try {
+                    val latlng = map.projection?.fromScreenLocation(
+                        android.graphics.PointF(
+                            mapView.width.toFloat() / 2f,
+                            mapView.height.toFloat() / 2f
+                        )
+                    )
+                    "${latlng?.latitude ?: "None"},${latlng?.longitude ?: "None"}"
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+                
+                val projBounds = try {
+                    val topLeft = map.projection?.fromScreenLocation(android.graphics.PointF(0f, 0f))
+                    val bottomRight = map.projection?.fromScreenLocation(
+                        android.graphics.PointF(
+                            mapView.width.toFloat(),
+                            mapView.height.toFloat()
+                        )
+                    )
+                    "TopLeft: $topLeft, BottomRight: $bottomRight"
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+                
+                buildLogAfter.append("ProjectionCenter=$projCenter\n")
+                buildLogAfter.append("ProjectionBounds=$projBounds\n\n")
+            }
+            
+            synchronized(this) {
+                cameraForcedTestResult = buildLog.toString() + buildLogAfter.toString()
+            }
+            
+            Log.d("CYBERTRAIL_CAMERA_TEST", "AFTER_FORCE_CAMERA:\n" + buildLogAfter.toString())
+            
+            runOnUiThread {
+                updateDiagnosticHud()
+            }
+        }, 3000)
     }
 }
