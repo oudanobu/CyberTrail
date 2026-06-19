@@ -18,12 +18,24 @@ class LocalTileServer(private val mbtilesPath: String) {
     var onTileFound: (() -> Unit)? = null
     var onTileNotFound: (() -> Unit)? = null
 
+    // 诊断系统所需变量
+    var requestCountTotal = 0
+    var requestCountTile = 0
+    var lastRequestPath: String? = null
+    var lastRequestZ: Int? = null
+    var lastRequestX: Int? = null
+    var lastRequestY: Int? = null
+    var lastRequestTimestamp: String? = null
+    var serverStarted = false
+    var onRequestLogged: (() -> Unit)? = null
+
     fun start() {
         if (isRunning) return
         try {
             db = SQLiteDatabase.openDatabase(mbtilesPath, null, SQLiteDatabase.OPEN_READONLY)
             serverSocket = ServerSocket(port)
             isRunning = true
+            serverStarted = true
             Log.d(TAG, "SERVER_START port=$port")
             thread {
                 while (isRunning) {
@@ -48,7 +60,13 @@ class LocalTileServer(private val mbtilesPath: String) {
                 val line = input.readLine() ?: return@thread
                 val parts = line.split(" ")
                 if (parts.size >= 2 && parts[0] == "GET") {
-                    var path = parts[1]
+                    val path = parts[1]
+                    
+                    // 记录请求诊断信息
+                    requestCountTotal++
+                    lastRequestPath = path
+                    lastRequestTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
+                    
                     val pathParts = path.trim('/').split('/')
                     if (pathParts.size >= 3) {
                         val z = pathParts[0].toIntOrNull()
@@ -58,6 +76,13 @@ class LocalTileServer(private val mbtilesPath: String) {
 
                         if (z != null && x != null && y != null) {
                             Log.d(TAG, "TILE_REQUEST z=$z x=$x y=$y")
+                            
+                            // 记录特定瓦片请求参数
+                            requestCountTile++
+                            lastRequestZ = z
+                            lastRequestX = x
+                            lastRequestY = y
+                            
                             onTileRequest?.invoke()
                             // MBTiles format holds tiles in TMS coordinate format
                             // We need to invert the Y coordinate for standard XYZ requests
@@ -72,13 +97,22 @@ class LocalTileServer(private val mbtilesPath: String) {
                                 onTileNotFound?.invoke()
                             }
                         } else {
+                            lastRequestZ = null
+                            lastRequestX = null
+                            lastRequestY = null
                             send404(client.getOutputStream())
                             onTileNotFound?.invoke()
                         }
                     } else {
+                        lastRequestZ = null
+                        lastRequestX = null
+                        lastRequestY = null
                         send404(client.getOutputStream())
                         onTileNotFound?.invoke()
                     }
+                    
+                    // 触发回调更新 HUD
+                    onRequestLogged?.invoke()
                 }
             } catch (e: Exception) {
             } finally {
@@ -131,6 +165,7 @@ class LocalTileServer(private val mbtilesPath: String) {
 
     fun stop() {
         isRunning = false
+        serverStarted = false
         try {
             serverSocket?.close()
         } catch (e: Exception) {}

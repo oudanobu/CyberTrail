@@ -81,6 +81,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var forcedZoomApplied: Boolean = false
     private var lastGpsLatitude: Double? = null
     private var lastGpsLongitude: Double? = null
+    private val httpRequestsHistory = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     private lateinit var locationManager: LocationManager
 
@@ -416,6 +417,18 @@ ${finalStyleJsonString ?: "None"}
                         runOnUiThread {
                             tileNotFoundCount++
                             Log.d("CYBERTRAIL_MAP", "TILE_NOT_FOUND: $tileNotFoundCount")
+                            updateDiagnosticHud()
+                        }
+                    }
+                    onRequestLogged = {
+                        val path = lastRequestPath
+                        if (path != null) {
+                            if (httpRequestsHistory.size >= 15) {
+                                httpRequestsHistory.removeAt(0)
+                            }
+                            httpRequestsHistory.add(path)
+                        }
+                        runOnUiThread {
                             updateDiagnosticHud()
                         }
                     }
@@ -883,6 +896,18 @@ ${finalStyleJsonString ?: "None"}
         params.height = (350 * density).toInt()
         panelView.layoutParams = params
 
+        val server = localTileServer
+        val serverRequestCountStr = server?.requestCountTotal?.toString() ?: "0"
+        val serverTileRequestCountStr = server?.requestCountTile?.toString() ?: "0"
+        val lastRequestPathStr = server?.lastRequestPath ?: "None"
+        val lastRequestZStr = server?.lastRequestZ?.toString() ?: "None"
+        val lastRequestXStr = server?.lastRequestX?.toString() ?: "None"
+        val lastRequestYStr = server?.lastRequestY?.toString() ?: "None"
+        val lastRequestTimestampStr = server?.lastRequestTimestamp ?: "None"
+        val serverStartedStr = (server?.serverStarted ?: false).toString()
+        val serverPortStr = server?.port?.toString() ?: "8080"
+        val requestsHistoryStr = if (httpRequestsHistory.isEmpty()) "None" else httpRequestsHistory.joinToString("\n")
+
         val sExists = sourceExists?.toString() ?: "Unknown"
         val lExists = layerExists?.toString() ?: "Unknown"
         val lClass = layerClassString ?: "Unknown"
@@ -1007,6 +1032,16 @@ ${finalStyleJsonString ?: "None"}
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
                 "TileNotFound: $tileNotFoundCount\n\n" +
+                "ServerRequestCount: $serverRequestCountStr\n" +
+                "ServerTileRequestCount: $serverTileRequestCountStr\n" +
+                "LastRequestPath: $lastRequestPathStr\n" +
+                "LastRequestZ: $lastRequestZStr\n" +
+                "LastRequestX: $lastRequestXStr\n" +
+                "LastRequestY: $lastRequestYStr\n" +
+                "LastRequestTimestamp: $lastRequestTimestampStr\n" +
+                "ServerStarted: $serverStartedStr\n" +
+                "ServerPort: $serverPortStr\n\n" +
+                "RequestHistoryList:\n$requestsHistoryStr\n\n" +
                 "CurrentLatitude: $currentLatitudeStr\n" +
                 "CurrentLongitude: $currentLongitudeStr\n\n" +
                 "CameraCenter: $cCenterStr\n" +
