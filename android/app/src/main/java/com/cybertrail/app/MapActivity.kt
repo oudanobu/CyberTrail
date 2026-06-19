@@ -79,6 +79,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var finalStyleJsonString: String? = null
     private var layerSourceLayerString: String? = null
     private var forcedZoomApplied: Boolean = false
+    private var lastGpsLatitude: Double? = null
+    private var lastGpsLongitude: Double? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -800,7 +802,10 @@ ${finalStyleJsonString ?: "None"}
     override fun onLocationChanged(location: Location) {
         val lat = location.latitude
         val lon = location.longitude
+        lastGpsLatitude = lat
+        lastGpsLongitude = lon
         updateTerrainHud(lat, lon)
+        updateDiagnosticHud()
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -910,11 +915,110 @@ ${finalStyleJsonString ?: "None"}
         val lSourceLayer = layerSourceLayerString ?: "Unknown"
         val fStyleJson = finalStyleJsonString ?: "None"
 
+        val map = mapboxMap
+
+        val currentLatitudeStr = if (lastGpsLatitude != null) "$lastGpsLatitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.latitude} (CameraCenter)" else "Unknown"
+        val currentLongitudeStr = if (lastGpsLongitude != null) "$lastGpsLongitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.longitude} (CameraCenter)" else "Unknown"
+
+        val cCenterStr = if (map != null) "${map.cameraPosition?.target}" else "None"
+        val cBoundsStr = try {
+            map?.projection?.visibleRegion?.latLngBounds?.toString() ?: "None"
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        val mapWidthStr = "${mapView.width} px"
+        val mapHeightStr = "${mapView.height} px"
+
+        val mapViewVisibilityStr = when (mapView.visibility) {
+            View.VISIBLE -> "VISIBLE"
+            View.INVISIBLE -> "INVISIBLE"
+            View.GONE -> "GONE"
+            else -> "UNKNOWN (${mapView.visibility})"
+        }
+
+        val mapLibreIsRenderedStr = (map != null && renderFrameCount > 0).toString()
+
+        val mapPaddingStr = try {
+            if (map != null) {
+                val getPaddingMethod = map.javaClass.methods.firstOrNull { 
+                    it.name == "getPadding" && it.parameterTypes.isEmpty() 
+                }
+                if (getPaddingMethod != null) {
+                    val pad = getPaddingMethod.invoke(map)
+                    when (pad) {
+                        is DoubleArray -> pad.joinToString(", ")
+                        is IntArray -> pad.joinToString(", ")
+                        is FloatArray -> pad.joinToString(", ")
+                        is Array<*> -> pad.joinToString(", ")
+                        else -> pad?.toString() ?: "None"
+                    }
+                } else {
+                    val pField = map.javaClass.declaredFields.firstOrNull { it.name == "padding" }
+                    if (pField != null) {
+                        pField.isAccessible = true
+                        val pad = pField.get(map)
+                        when (pad) {
+                            is DoubleArray -> pad.joinToString(", ")
+                            is IntArray -> pad.joinToString(", ")
+                            is FloatArray -> pad.joinToString(", ")
+                            is Array<*> -> pad.joinToString(", ")
+                            else -> pad?.toString() ?: "None"
+                        }
+                    } else {
+                        "getPadding method not found"
+                    }
+                }
+            } else {
+                "None"
+            }
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        fun findRenderSurfaceSize(view: ViewGroup): String {
+            for (i in 0 until view.childCount) {
+                val child = view.getChildAt(i)
+                val className = child.javaClass.simpleName
+                if (className.contains("Surface") || className.contains("Texture") || className.contains("Canvas")) {
+                    return "${child.width}x${child.height} ($className)"
+                }
+                if (child is ViewGroup) {
+                    val res = findRenderSurfaceSize(child)
+                    if (res != "Unknown") return res
+                }
+            }
+            return "Unknown"
+        }
+
+        val renderSurfaceSizeStr = findRenderSurfaceSize(mapView).let {
+            if (it == "Unknown") "${mapView.width}x${mapView.height} (Fallback)" else it
+        }
+
+        val mapboxMapCameraPositionTargetStr = map?.cameraPosition?.target?.toString() ?: "None"
+        val mapboxMapProjectionVisibleRegionLatLngBoundsStr = try {
+            map?.projection?.visibleRegion?.latLngBounds?.toString() ?: "None"
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
         hudDiagnosticCounters.text = "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
                 "TileNotFound: $tileNotFoundCount\n\n" +
+                "CurrentLatitude: $currentLatitudeStr\n" +
+                "CurrentLongitude: $currentLongitudeStr\n\n" +
+                "CameraCenter: $cCenterStr\n" +
+                "CameraBounds: $cBoundsStr\n\n" +
+                "MapWidth: $mapWidthStr\n" +
+                "MapHeight: $mapHeightStr\n\n" +
+                "MapViewVisibility: $mapViewVisibilityStr\n\n" +
+                "MapLibreIsRendered: $mapLibreIsRenderedStr\n\n" +
+                "MapPadding: $mapPaddingStr\n\n" +
+                "RenderSurfaceSize: $renderSurfaceSizeStr\n\n" +
+                "mapboxMap.cameraPosition.target: $mapboxMapCameraPositionTargetStr\n" +
+                "mapboxMap.projection.visibleRegion.latLngBounds: $mapboxMapProjectionVisibleRegionLatLngBoundsStr\n\n" +
                 "Offline Layer Config:\n" +
                 "source=$lSource\n" +
                 "source-layer=$lSourceLayer\n" +
