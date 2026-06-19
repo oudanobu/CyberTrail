@@ -93,6 +93,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -143,7 +144,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
             true
         }
 
-        @SuppressLint("ClickableViewAccessibility")
         titleView.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
