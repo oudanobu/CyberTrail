@@ -50,6 +50,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var tileRequestCount = 0
     private var tileFoundCount = 0
     private var tileNotFoundCount = 0
+    private var sourceChangedCount = 0
+    private var didFinishLoadingStyleCount = 0
+    private var didBecomeIdleCount = 0
     private var sourceExists: Boolean? = null
     private var layerExists: Boolean? = null
     private var layerClassString: String? = null
@@ -323,6 +326,21 @@ ${finalStyleJsonString ?: "None"}
         mapView.addOnDidFinishRenderingFrameListener {
             renderFrameCount++
             Log.d("CYBERTRAIL_MAP", "Map render frame finished. FRAME_RENDERED=$renderFrameCount")
+            updateDiagnosticHud()
+        }
+        mapView.addOnSourceChangedListener { id ->
+            sourceChangedCount++
+            Log.d("CYBERTRAIL_MAP", "OnSourceChanged: sourceId=$id (count=$sourceChangedCount)")
+            updateDiagnosticHud()
+        }
+        mapView.addOnDidFinishLoadingStyleListener {
+            didFinishLoadingStyleCount++
+            Log.d("CYBERTRAIL_MAP", "OnDidFinishLoadingStyle: count=$didFinishLoadingStyleCount")
+            updateDiagnosticHud()
+        }
+        mapView.addOnDidBecomeIdleListener {
+            didBecomeIdleCount++
+            Log.d("CYBERTRAIL_MAP", "OnDidBecomeIdle: count=$didBecomeIdleCount")
             updateDiagnosticHud()
         }
         mapView.getMapAsync(this)
@@ -1122,6 +1140,9 @@ ${finalStyleJsonString ?: "None"}
                 "========================================\n\n" +
                 "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
+                "SourceChangedCount: $sourceChangedCount\n" +
+                "DidFinishLoadingStyleCount: $didFinishLoadingStyleCount\n" +
+                "DidBecomeIdleCount: $didBecomeIdleCount\n" +
                 "TileRequest: $tileRequestCount\n" +
                 "TileFound: $tileFoundCount\n" +
                 "TileNotFound: $tileNotFoundCount\n\n" +
