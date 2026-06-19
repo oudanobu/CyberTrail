@@ -1050,6 +1050,71 @@ ${finalStyleJsonString ?: "None"}
             layerSourceValueStr = lSrcIdVal ?: "None"
         }
 
+        val styleFullyLoadedStr = try {
+            val m = currentStyle?.javaClass?.getMethod("isFullyLoaded")
+            if (m != null) {
+                m.invoke(currentStyle)?.toString() ?: "None"
+            } else {
+                val m2 = map?.javaClass?.getMethod("isFullyLoaded")
+                m2?.invoke(map)?.toString() ?: "None"
+            }
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        val offlineLayerObjForD = currentStyle?.getLayer("offline-layer")
+        
+        val rlVisibilityStr = try {
+            offlineLayerObjForD?.visibility?.value?.toString() ?: "None"
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        val rlOpacityStr = try {
+            val getOpacityMethod = offlineLayerObjForD?.javaClass?.methods?.firstOrNull { it.name == "getRasterOpacity" }
+            if (getOpacityMethod != null) {
+                val opacityVal = getOpacityMethod.invoke(offlineLayerObjForD)
+                val getValueMethod = opacityVal?.javaClass?.methods?.firstOrNull { it.name == "getValue" }
+                if (getValueMethod != null) {
+                    getValueMethod.invoke(opacityVal)?.toString() ?: "None"
+                } else {
+                    opacityVal?.toString() ?: "None"
+                }
+            } else {
+                "Method getRasterOpacity not found"
+            }
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        val rlRenderPassStr = try {
+            val getRenderPassMethod = offlineLayerObjForD?.javaClass?.methods?.firstOrNull { it.name == "getRenderPass" }
+            if (getRenderPassMethod != null) {
+                getRenderPassMethod.invoke(offlineLayerObjForD)?.toString() ?: "None"
+            } else {
+                "Method getRenderPass not found"
+            }
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
+        val sourceCacheStatusStr = try {
+            val mbtilesSource = currentStyle?.getSource("offline-mbtiles")
+            if (mbtilesSource != null) {
+                val methods = mbtilesSource.javaClass.methods.map { "${it.name}(${it.parameterTypes.joinToString(",") { p -> p.simpleName }}): ${it.returnType.simpleName}" }
+                val relevantMethods = methods.filter { it.contains("cache", ignoreCase = true) || it.contains("stat", ignoreCase = true) || it.contains("tile", ignoreCase = true) }
+                if (relevantMethods.isNotEmpty()) {
+                    relevantMethods.joinToString("\n")
+                } else {
+                    "No cache/tile/stat methods found on source. List of first 15:\n" + methods.take(15).joinToString("\n")
+                }
+            } else {
+                "Source offline-mbtiles is null"
+            }
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+
         val currentLatitudeStr = if (lastGpsLatitude != null) "$lastGpsLatitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.latitude} (CameraCenter)" else "Unknown"
         val currentLongitudeStr = if (lastGpsLongitude != null) "$lastGpsLongitude (GPS)" else if (map != null) "${map.cameraPosition?.target?.longitude} (CameraCenter)" else "Unknown"
 
@@ -1137,6 +1202,18 @@ ${finalStyleJsonString ?: "None"}
 
         hudDiagnosticCounters.text = "--- CAMERA FORCED TEST ---\n" +
                 cameraForcedTestResult + "\n" +
+                "========================================\n\n" +
+                "--- NATIVE PIPELINE DIAGNOSTICS ---\n" +
+                "onSourceChanged Count: $sourceChangedCount\n" +
+                "onDidFinishLoadingStyle Count: $didFinishLoadingStyleCount\n" +
+                "onDidBecomeIdle Count: $didBecomeIdleCount\n" +
+                "style.isFullyLoaded: $styleFullyLoadedStr\n" +
+                "Native Source Count: $styleSourcesSizeStr\n" +
+                "Native Layer Count: $styleLayersSizeStr\n" +
+                "RasterLayer Visibility: $rlVisibilityStr\n" +
+                "RasterLayer Opacity: $rlOpacityStr\n" +
+                "RasterLayer RenderPass: $rlRenderPassStr\n" +
+                "Source Cache Status:\n$sourceCacheStatusStr\n" +
                 "========================================\n\n" +
                 "RenderFrame: $renderFrameCount\n" +
                 "CameraMove: $cameraMoveCount\n" +
@@ -1248,6 +1325,45 @@ ${finalStyleJsonString ?: "None"}
             updateDiagnosticHud()
         }
 
+        // Run network tests in worker thread to prevent NetworkOnMainThreadException
+        var testConnectionResult = "Not started"
+        var manualTileRequestResult = "Not started"
+        
+        kotlin.concurrent.thread {
+            // 9. HTTP Test Endpoint /test
+            try {
+                val url = java.net.URL("http://127.0.0.1:8080/test")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                val code = conn.responseCode
+                val body = try {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } catch (e: Exception) {
+                    "Error reading: ${e.message}"
+                }
+                testConnectionResult = "Result: SUCCESS\nResponseCode: $code\nResponseBody: $body"
+            } catch (e: Exception) {
+                testConnectionResult = "Result: FAILED\nError: ${e.message}"
+            }
+
+            // 10. Manual Tile Request Test (http://127.0.0.1:8080/5/27/12.png)
+            try {
+                val url = java.net.URL("http://127.0.0.1:8080/5/27/12.png")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                val code = conn.responseCode
+                val length = conn.contentLength
+                val contentType = conn.contentType
+                manualTileRequestResult = "Result: SUCCESS\nHTTP状态码: $code\n返回长度: $length\nContent-Type: $contentType"
+            } catch (e: Exception) {
+                manualTileRequestResult = "Result: FAILED\nError: ${e.message}"
+            }
+        }
+
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         handler.postDelayed({
             val afterCenter = map.cameraPosition?.target
@@ -1280,6 +1396,84 @@ ${finalStyleJsonString ?: "None"}
             buildLogAfter.append("TileRequest=$tileRequestCount\n")
             buildLogAfter.append("TileFound=$tileFoundCount\n")
             buildLogAfter.append("TileNotFound=$tileNotFoundCount\n\n")
+
+            val currentStyle = try {
+                map.style
+            } catch (ex: Exception) {
+                null
+            }
+
+            // Checklist 2: StyleFullyLoaded
+            val styleFullyLoadedStr = try {
+                val m = currentStyle?.javaClass?.getMethod("isFullyLoaded")
+                if (m != null) {
+                    m.invoke(currentStyle)?.toString() ?: "None"
+                } else {
+                    val m2 = map.javaClass.getMethod("isFullyLoaded")
+                    m2.invoke(map)?.toString() ?: "None"
+                }
+            } catch (e: Exception) {
+                "Error: ${e.message}"
+            }
+
+            // Checklist 3: MBTILES SOURCE & LAYER EXISTS
+            val mbtilesSource = currentStyle?.getSource("offline-mbtiles")
+            val offlineLayerObj = currentStyle?.getLayer("offline-layer")
+            val sourceExistsBool = (mbtilesSource != null).toString()
+            val layerExistsBool = (offlineLayerObj != null).toString()
+
+            // Checklist 4: offline-layer properties
+            val rlPropertiesStr = getLayerProperties(offlineLayerObj)
+
+            // Checklist 5: MapboxMap & MapView States
+            val mapAndMapViewStatesStr = getMapStates(map, mapView)
+
+            // Checklist 6: Native Tile Pyramid Status
+            val tilePyramidStatusStr = getNativeTilePyramidStatus(map, mapView)
+
+            // Checklist 7: offline-mbtiles Source callable methods
+            val sourceAllMethodsStr = getSourceAllMethods(mbtilesSource)
+
+            // Checklist 8: offline-mbtiles Source declared fields
+            val sourceAllFieldsStr = getSourceAllDeclaredFields(mbtilesSource)
+
+            buildLogAfter.append("========================================\n")
+            buildLogAfter.append("MAPLIBRE NATIVE PIPELINE FULL DIAGNOSTICS\n")
+            buildLogAfter.append("========================================\n\n")
+
+            buildLogAfter.append("1. EVENTS COUNTERS:\n")
+            buildLogAfter.append("SourceChangedCount=$sourceChangedCount\n")
+            buildLogAfter.append("DidFinishLoadingStyleCount=$didFinishLoadingStyleCount\n")
+            buildLogAfter.append("DidBecomeIdleCount=$didBecomeIdleCount\n\n")
+
+            buildLogAfter.append("2. STYLE LOADING STATUS:\n")
+            buildLogAfter.append("StyleFullyLoaded=$styleFullyLoadedStr\n\n")
+
+            buildLogAfter.append("3. MBTILES SOURCE & LAYER EXISTS:\n")
+            buildLogAfter.append("offline-mbtiles Source Exists=$sourceExistsBool\n")
+            buildLogAfter.append("offline-layer Layer Exists=$layerExistsBool\n\n")
+
+            buildLogAfter.append("4. OFFLINE-LAYER PROPERTIES:\n")
+            buildLogAfter.append("$rlPropertiesStr\n")
+
+            buildLogAfter.append("5. MAPBOXMAP & MAPVIEW STATES:\n")
+            buildLogAfter.append("$mapAndMapViewStatesStr\n")
+
+            buildLogAfter.append("6. NATIVE TILE PYRAMID STATUS:\n")
+            buildLogAfter.append("$tilePyramidStatusStr\n")
+
+            buildLogAfter.append("7. OFFLINE-MBTILES SOURCE METHODS:\n")
+            buildLogAfter.append("$sourceAllMethodsStr\n\n")
+
+            buildLogAfter.append("8. OFFLINE-MBTILES SOURCE DECLARED FIELDS:\n")
+            buildLogAfter.append("$sourceAllFieldsStr\n\n")
+
+            buildLogAfter.append("9. LOCAL HTTP TEST CONNECTION:\n")
+            buildLogAfter.append("$testConnectionResult\n\n")
+
+            buildLogAfter.append("10. MANUAL TILE HTTP REQUEST TEST:\n")
+            buildLogAfter.append("$manualTileRequestResult\n")
+            buildLogAfter.append("========================================\n\n")
             
             if (sReqCount == 0) {
                 val projCenter = try {
@@ -1321,5 +1515,131 @@ ${finalStyleJsonString ?: "None"}
                 updateDiagnosticHud()
             }
         }, 3000)
+    }
+
+    private fun getLayerProperties(layer: Any?): String {
+        if (layer == null) return "Layer is null"
+        val sb = StringBuilder()
+        try {
+            val methods = layer.javaClass.methods
+            for (m in methods) {
+                if (m.parameterTypes.isEmpty() && m.returnType != Void.TYPE) {
+                    val name = m.name
+                    if (name.startsWith("get") || name.startsWith("is") || name == "id" || name == "visibility") {
+                        try {
+                            val value = m.invoke(layer)
+                            sb.append("  Method ${name}(): ${value?.toString()}\n")
+                        } catch (e: Exception) {
+                            sb.append("  Method ${name}(): Error (${e.message})\n")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            sb.append("Error getting layer properties: ${e.message}\n")
+        }
+        return sb.toString()
+    }
+
+    private fun getMapStates(map: Any?, mapView: Any?): String {
+        val sb = StringBuilder()
+        if (map != null) {
+            sb.append("MapboxMap methods:\n")
+            val methods = map.javaClass.methods
+            for (m in listOf("isDestroyed", "isFullyLoaded", "getRenderMode", "getStyle", "getCameraPosition")) {
+                val matching = methods.firstOrNull { it.name.equals(m, ignoreCase = true) && it.parameterTypes.isEmpty() }
+                if (matching != null) {
+                    try {
+                        sb.append("  ${matching.name}(): ${matching.invoke(map)}\n")
+                    } catch (e: Exception) {
+                        sb.append("  ${matching.name}(): Error (${e.message})\n")
+                    }
+                } else {
+                    sb.append("  ${m} not found on MapboxMap\n")
+                }
+            }
+        }
+        if (mapView != null) {
+            sb.append("MapView methods:\n")
+            val methods = mapView.javaClass.methods
+            for (m in listOf("isDestroyed", "getVisibility", "getWidth", "getHeight", "isFullyLoaded")) {
+                val matching = methods.firstOrNull { it.name.equals(m, ignoreCase = true) && it.parameterTypes.isEmpty() }
+                if (matching != null) {
+                    try {
+                        sb.append("  ${matching.name}(): ${matching.invoke(mapView)}\n")
+                    } catch (e: Exception) {
+                        sb.append("  ${matching.name}(): Error (${e.message})\n")
+                    }
+                } else {
+                    sb.append("  ${m} not found on MapView\n")
+                }
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun getNativeTilePyramidStatus(map: Any?, mapView: Any?): String {
+        val sb = StringBuilder()
+        val objectsToScan = listOfNotNull(map, mapView)
+        for (obj in objectsToScan) {
+            sb.append("Scanning ${obj.javaClass.simpleName} for tile properties:\n")
+            try {
+                val methods = obj.javaClass.methods
+                for (m in methods) {
+                    val name = m.name.lowercase()
+                    if (name.contains("tile") || name.contains("pyramid") || name.contains("render")) {
+                        if (m.parameterTypes.isEmpty() && m.returnType != Void.TYPE) {
+                            try {
+                                sb.append("  Method ${m.name}(): ${m.invoke(obj)}\n")
+                            } catch (e: Exception) {
+                                sb.append("  Method ${m.name}(): Error (${e.message})\n")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                sb.append("Error scanning: ${e.message}\n")
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun getSourceAllMethods(source: Any?): String {
+        if (source == null) return "Source is null"
+        val sb = StringBuilder()
+        try {
+            val methods = source.javaClass.methods
+            for (m in methods) {
+                sb.append("method: ${m.name}(${m.parameterTypes.joinToString(",") { p -> p.simpleName }}): ${m.returnType.simpleName}\n")
+            }
+        } catch (e: Exception) {
+            sb.append("Error listing methods: ${e.message}\n")
+        }
+        return sb.toString()
+    }
+
+    private fun getSourceAllDeclaredFields(source: Any?): String {
+        if (source == null) return "Source is null"
+        val sb = StringBuilder()
+        try {
+            var klass: Class<*>? = source.javaClass
+            while (klass != null) {
+                sb.append("Class: ${klass.name}\n")
+                val fields = klass.declaredFields
+                for (f in fields) {
+                    try {
+                        f.isAccessible = true
+                        val value = f.get(source)
+                        sb.append("  fieldName: ${f.name} = $value (Type: ${f.type.simpleName})\n")
+                    } catch (e: Exception) {
+                        sb.append("  fieldName: ${f.name} = Error accessing field: ${e.message}\n")
+                    }
+                }
+                klass = klass.superclass
+            }
+        } catch (e: Exception) {
+            sb.append("Error listing fields: ${e.message}\n")
+        }
+        return sb.toString()
     }
 }

@@ -67,32 +67,42 @@ class LocalTileServer(private val mbtilesPath: String) {
                     lastRequestPath = path
                     lastRequestTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
                     
-                    val pathParts = path.trim('/').split('/')
-                    if (pathParts.size >= 3) {
-                        val z = pathParts[0].toIntOrNull()
-                        val x = pathParts[1].toIntOrNull()
-                        val yExt = pathParts[2]
-                        val y = yExt.split('.')[0].toIntOrNull()
+                    if (path == "/test") {
+                        sendResponse(client.getOutputStream(), 200, "text/plain", "OK".toByteArray())
+                    } else {
+                        val pathParts = path.trim('/').split('/')
+                        if (pathParts.size >= 3) {
+                            val z = pathParts[0].toIntOrNull()
+                            val x = pathParts[1].toIntOrNull()
+                            val yExt = pathParts[2]
+                            val y = yExt.split('.')[0].toIntOrNull()
 
-                        if (z != null && x != null && y != null) {
-                            Log.d(TAG, "TILE_REQUEST z=$z x=$x y=$y")
-                            
-                            // 记录特定瓦片请求参数
-                            requestCountTile++
-                            lastRequestZ = z
-                            lastRequestX = x
-                            lastRequestY = y
-                            
-                            onTileRequest?.invoke()
-                            // MBTiles format holds tiles in TMS coordinate format
-                            // We need to invert the Y coordinate for standard XYZ requests
-                            val tmsY = (1 shl z) - 1 - y
-                            
-                            val tileData = getTile(z, x, tmsY)
-                            if (tileData != null) {
-                                sendResponse(client.getOutputStream(), 200, "image/png", tileData)
-                                onTileFound?.invoke()
+                            if (z != null && x != null && y != null) {
+                                Log.d(TAG, "TILE_REQUEST z=$z x=$x y=$y")
+                                
+                                // 记录特定瓦片请求参数
+                                requestCountTile++
+                                lastRequestZ = z
+                                lastRequestX = x
+                                lastRequestY = y
+                                
+                                onTileRequest?.invoke()
+                                // MBTiles format holds tiles in TMS coordinate format
+                                // We need to invert the Y coordinate for standard XYZ requests
+                                val tmsY = (1 shl z) - 1 - y
+                                
+                                val tileData = getTile(z, x, tmsY)
+                                if (tileData != null) {
+                                    sendResponse(client.getOutputStream(), 200, "image/png", tileData)
+                                    onTileFound?.invoke()
+                                } else {
+                                    send404(client.getOutputStream())
+                                    onTileNotFound?.invoke()
+                                }
                             } else {
+                                lastRequestZ = null
+                                lastRequestX = null
+                                lastRequestY = null
                                 send404(client.getOutputStream())
                                 onTileNotFound?.invoke()
                             }
@@ -103,12 +113,6 @@ class LocalTileServer(private val mbtilesPath: String) {
                             send404(client.getOutputStream())
                             onTileNotFound?.invoke()
                         }
-                    } else {
-                        lastRequestZ = null
-                        lastRequestX = null
-                        lastRequestY = null
-                        send404(client.getOutputStream())
-                        onTileNotFound?.invoke()
                     }
                     
                     // 触发回调更新 HUD
