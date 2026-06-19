@@ -78,6 +78,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var isHudExpanded: Boolean = true
     private var finalStyleJsonString: String? = null
     private var layerSourceLayerString: String? = null
+    private var forcedZoomApplied: Boolean = false
 
     private lateinit var locationManager: LocationManager
 
@@ -134,6 +135,80 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         titleView.setOnClickListener {
             isHudExpanded = !isHudExpanded
             updateDiagnosticHud()
+        }
+
+        val btnCopyDiagnostic = findViewById<TextView>(R.id.btn_copy_diagnostic)
+        val btnCopyJson = findViewById<TextView>(R.id.btn_copy_json)
+        val btnExportDiagnostic = findViewById<TextView>(R.id.btn_export_diagnostic)
+
+        btnCopyDiagnostic.setOnClickListener {
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Diagnostic Info", hudDiagnosticCounters.text.toString())
+                clipboard.setPrimaryClip(clip)
+                btnCopyDiagnostic.text = "✅ 诊断信息已复制"
+                btnCopyDiagnostic.postDelayed({
+                    btnCopyDiagnostic.text = "📋 复制诊断信息"
+                }, 2000)
+            } catch (e: Exception) {
+                Log.e("CYBERTRAIL_MAP", "Failed to copy diagnostic info", e)
+            }
+        }
+
+        btnCopyJson.setOnClickListener {
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Style JSON", finalStyleJsonString ?: "")
+                clipboard.setPrimaryClip(clip)
+                btnCopyJson.text = "✅ Style JSON已复制"
+                btnCopyJson.postDelayed({
+                    btnCopyJson.text = "📋 复制Style JSON"
+                }, 2000)
+            } catch (e: Exception) {
+                Log.e("CYBERTRAIL_MAP", "Failed to copy style JSON", e)
+            }
+        }
+
+        btnExportDiagnostic.setOnClickListener {
+            try {
+                val sdfFile = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.getDefault())
+                val timestampFile = sdfFile.format(java.util.Date())
+                val fileName = "CyberTrail_Diagnostic_$timestampFile.txt"
+                
+                val parentDir = java.io.File("/storage/emulated/0/CyberTrail/diagnostic/")
+                if (!parentDir.exists()) {
+                    parentDir.mkdirs()
+                }
+                
+                val file = java.io.File(parentDir, fileName)
+                
+                val currentTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                val txtContent = """
+========================================
+CYBERTRAIL DIAGNOSTIC FILE
+Timestamp: $currentTimestamp
+========================================
+
+--- DIAGNOSTIC INFORMATION ---
+${hudDiagnosticCounters.text}
+
+--- FINAL STYLE JSON ---
+${finalStyleJsonString ?: "None"}
+""".trimIndent()
+
+                file.writeText(txtContent)
+                
+                val absolutePath = file.absolutePath
+                android.widget.Toast.makeText(this@MapActivity, "✅ 已导出诊断文件\n路径: $absolutePath", android.widget.Toast.LENGTH_LONG).show()
+                
+                btnExportDiagnostic.text = "✅ 已导出诊断文件"
+                btnExportDiagnostic.postDelayed({
+                    btnExportDiagnostic.text = "📤 导出诊断TXT"
+                }, 2000)
+            } catch (e: Exception) {
+                Log.e("CYBERTRAIL_MAP", "Failed to export diagnostic file", e)
+                android.widget.Toast.makeText(this@MapActivity, "❌ 导出失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
 
         var isDragging = false
@@ -624,6 +699,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                         }
                     }
 
+                    try {
+                        map.moveCamera(com.mapbox.mapboxsdk.camera.CameraUpdateFactory.zoomTo(10.0))
+                        forcedZoomApplied = true
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to force camera zoom to 10.0", e)
+                    }
+
                     updateDiagnosticHud()
                 }
             } else {
@@ -651,6 +733,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 map.setStyle(Style.Builder().fromJson(fallbackStyle)) { style ->
                     Log.d("CYBERTRAIL_MAP", "STYLE_SUCCESS")
                     hudStyleStatus.text = "Style加载: 无离线地图(使用在线OSM备用)"
+                    try {
+                        map.moveCamera(com.mapbox.mapboxsdk.camera.CameraUpdateFactory.zoomTo(10.0))
+                        forcedZoomApplied = true
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to force camera zoom to 10.0 in fallback callback", e)
+                    }
+                    updateDiagnosticHud()
                 }
             }
         } catch (e: Exception) {
@@ -767,12 +856,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         val panelView = findViewById<LinearLayout>(R.id.hud_diagnostic_panel)
         val scrollView = findViewById<ScrollView>(R.id.hud_diagnostic_scroll)
         val titleView = findViewById<TextView>(R.id.hud_diagnostic_title)
+        val buttonsContainer = findViewById<LinearLayout>(R.id.hud_diagnostic_buttons)
 
         if (panelView == null || scrollView == null || titleView == null) return
 
         if (!isHudExpanded) {
             titleView.text = "▶ 诊断信息"
             scrollView.visibility = View.GONE
+            buttonsContainer?.visibility = View.GONE
             val params = panelView.layoutParams
             params.height = ViewGroup.LayoutParams.WRAP_CONTENT
             panelView.layoutParams = params
@@ -781,6 +872,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
         titleView.text = "▼ 诊断信息"
         scrollView.visibility = View.VISIBLE
+        buttonsContainer?.visibility = View.VISIBLE
         val params = panelView.layoutParams
         val density = resources.displayMetrics.density
         params.height = (350 * density).toInt()
@@ -855,6 +947,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
                 "RasterSourceAvailableMethods:\n$rMethods\n\n" +
                 "CameraZoom: $cZoom\n\n" +
                 "FINAL_STYLE_JSON:\n$fStyleJson\n\n" +
+                "ForcedZoomApplied: $forcedZoomApplied\n\n" +
                 "HUDHeight: ${hudHeight}px\n" +
                 "ScrollY: $scrollY"
     }

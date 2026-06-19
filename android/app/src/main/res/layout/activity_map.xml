@@ -144,6 +144,65 @@
             android:clickable="true"
             android:focusable="true"/>
 
+        <LinearLayout
+            android:id="@+id/hud_diagnostic_buttons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+                <TextView
+                    android:id="@+id/btn_copy_diagnostic"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginRight="4dp"
+                    android:background="#44FFFFFF"
+                    android:text="📋 复制诊断信息"
+                    android:textColor="#FFFFFF"
+                    android:textSize="9sp"
+                    android:gravity="center"
+                    android:padding="6dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:id="@+id/btn_copy_json"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginLeft="4dp"
+                    android:background="#44FFFFFF"
+                    android:text="📋 复制Style JSON"
+                    android:textColor="#FFFFFF"
+                    android:textSize="9sp"
+                    android:gravity="center"
+                    android:padding="6dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btn_export_diagnostic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="#44FFFFFF"
+                android:text="📤 导出诊断TXT"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:gravity="center"
+                android:padding="6dp"
+                android:clickable="true"
+                android:focusable="true"/>
+        </LinearLayout>
+
         <ScrollView
             android:id="@+id/hud_diagnostic_scroll"
             android:layout_width="match_parent"
