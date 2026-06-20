@@ -1746,7 +1746,7 @@ ${finalStyleJsonString ?: "None"}
         if (mbtilesPath == null) {
             resultLog.append("Error: 没有检测到离线 MBTiles 数据库文件！\n")
             resultLog.append("Dandong Tile Exists = false\n")
-            resultLog.append("当前 MBTiles 不包含丹东区域离线数据\n")
+            resultLog.append("“当前数据库仅包含世界概览层，不包含丹东离线影像数据”\n")
             runOnUiThread {
                 mbtilesScanResult = resultLog.toString()
                 isHudExpanded = true
@@ -1755,7 +1755,7 @@ ${finalStyleJsonString ?: "None"}
             return
         }
 
-        resultLog.append("数据库文件路径:\n$mbtilesPath\n\n")
+        resultLog.append("1. 打开当前加载的 MBTiles 文件:\n$mbtilesPath\n\n")
 
         var db: android.database.sqlite.SQLiteDatabase? = null
         try {
@@ -1763,63 +1763,48 @@ ${finalStyleJsonString ?: "None"}
                 mbtilesPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY
             )
 
-            // 2. 输出 minZoom, maxZoom 
-            var metadataMinZoom: String? = null
-            var metadataMaxZoom: String? = null
+            // 4. 输出 metadata 表全部内容：SELECT name, value FROM metadata;
+            resultLog.append("4. 元数据表 (metadata) 全部内容:\n")
+            resultLog.append("[SQL] SELECT name, value FROM metadata;\n")
             var bounds: String? = null
             var center: String? = null
-
             try {
-                val cursor = db.rawQuery("SELECT name, value FROM metadata", null)
-                while (cursor.moveToNext()) {
-                    val name = cursor.getString(0)
-                    val value = cursor.getString(1)
-                    when (name) {
-                        "minzoom" -> metadataMinZoom = value
-                        "maxzoom" -> metadataMaxZoom = value
-                        "bounds" -> bounds = value
-                        "center" -> center = value
-                    }
+                val cursorAll = db.rawQuery("SELECT name, value FROM metadata", null)
+                while (cursorAll.moveToNext()) {
+                    val n = cursorAll.getString(0)
+                    val v = cursorAll.getString(1)
+                    resultLog.append("  * $n = $v\n")
+                    if (n == "bounds") bounds = v
+                    if (n == "center") center = v
                 }
-                cursor.close()
+                cursorAll.close()
             } catch (e: Exception) {
-                resultLog.append("读取 metadata 异常: ${e.message}\n")
+                resultLog.append("  读取 metadata error: ${e.message}\n")
             }
+            resultLog.append("\n")
 
-            resultLog.append("--- Metadata Config ---\n")
-            resultLog.append("minZoom: ${metadataMinZoom ?: "Not Found"}\n")
-            resultLog.append("maxZoom: ${metadataMaxZoom ?: "Not Found"}\n\n")
-
-            // 5. 输出数据库覆盖范围 bounds, center
-            resultLog.append("--- Coverage (Metadata) ---\n")
-            resultLog.append("bounds: ${bounds ?: "Not Found"}\n")
-            resultLog.append("center: ${center ?: "Not Found"}\n\n")
-
-            // 3. 输出 tiles 里的实际 zoom_level 极值
+            // 2. 输出 SELECT MIN(zoom_level), MAX(zoom_level) FROM tiles;
+            resultLog.append("2. 实际存储层级极值:\n")
+            resultLog.append("[SQL] SELECT MIN(zoom_level), MAX(zoom_level) FROM tiles;\n")
             var actualMinZoom: Int? = null
             var actualMaxZoom: Int? = null
             try {
-                val cursorMin = db.rawQuery("SELECT MIN(zoom_level) FROM tiles", null)
-                if (cursorMin.moveToFirst()) {
-                    actualMinZoom = cursorMin.getInt(0)
+                val cursorMinMax = db.rawQuery("SELECT MIN(zoom_level), MAX(zoom_level) FROM tiles", null)
+                if (cursorMinMax.moveToFirst()) {
+                    if (!cursorMinMax.isNull(0)) actualMinZoom = cursorMinMax.getInt(0)
+                    if (!cursorMinMax.isNull(1)) actualMaxZoom = cursorMinMax.getInt(1)
                 }
-                cursorMin.close()
-
-                val cursorMax = db.rawQuery("SELECT MAX(zoom_level) FROM tiles", null)
-                if (cursorMax.moveToFirst()) {
-                    actualMaxZoom = cursorMax.getInt(0)
-                }
-                cursorMax.close()
+                cursorMinMax.close()
+                resultLog.append("  * MIN(zoom_level): ${actualMinZoom ?: "None"}\n")
+                resultLog.append("  * MAX(zoom_level): ${actualMaxZoom ?: "None"}\n")
             } catch (e: Exception) {
-                resultLog.append("查询 `tiles` 表极值异常: ${e.message}\n")
+                resultLog.append("  查询 zoom_level 极值 error: ${e.message}\n")
             }
+            resultLog.append("\n")
 
-            resultLog.append("--- Zoom level (Actual in tiles table) ---\n")
-            resultLog.append("SELECT MIN(zoom_level): ${actualMinZoom ?: "None"}\n")
-            resultLog.append("SELECT MAX(zoom_level): ${actualMaxZoom ?: "None"}\n\n")
-
-            // 4. 每个 zoom 层的瓦片数量
-            resultLog.append("--- Tiles Count per Zoom level ---\n")
+            // 3. 输出每个 zoom 层的瓦片数量
+            resultLog.append("3. 每个 zoom 层的瓦片数量:\n")
+            resultLog.append("[SQL] SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level ORDER BY zoom_level;\n")
             try {
                 val cursorCount = db.rawQuery(
                     "SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level ORDER BY zoom_level", null
@@ -1827,26 +1812,60 @@ ${finalStyleJsonString ?: "None"}
                 while (cursorCount.moveToNext()) {
                     val z = cursorCount.getInt(0)
                     val count = cursorCount.getLong(1)
-                    resultLog.append("Zoom $z: $count tiles\n")
+                    resultLog.append("  * Zoom $z: $count 张瓦片\n")
                 }
                 cursorCount.close()
             } catch (e: Exception) {
-                resultLog.append("查询瓦片数量异常: ${e.message}\n")
+                resultLog.append("  查询瓦片数量 error: ${e.message}\n")
             }
             resultLog.append("\n")
 
-            // 6. 检查丹东坐标 40.123665, 124.389216 对应 tile x/y
+            // 5. 如果 metadata 中存在 bounds：判断丹东坐标 (40.123665, 124.389216) 是否位于 bounds 内
             val targetLat = 40.123665
             val targetLon = 124.389216
-            resultLog.append("--- Check Dandong coordinates: $targetLat, $targetLon ---\n")
+            resultLog.append("5. 数据库覆盖范围 (bounds) 与丹东坐标判定:\n")
+            if (bounds != null) {
+                resultLog.append("  * bounds = $bounds\n")
+                try {
+                    val parts = bounds.split(",").map { it.trim().toDouble() }
+                    if (parts.size >= 4) {
+                        val minLon = parts[0]
+                        val minLat = parts[1]
+                        val maxLon = parts[2]
+                        val maxLat = parts[3]
+                        val latOk = targetLat in minLat..maxLat
+                        val lonOk = targetLon in minLon..maxLon
+                        if (latOk && lonOk) {
+                            resultLog.append("  * 判定结果: YES (丹东坐标 $targetLat, $targetLon 位于 bounds 范围之内)\n")
+                        } else {
+                            resultLog.append("  * 判定结果: NO (丹东坐标 $targetLat, $targetLon 不在 bounds 范围之内)\n")
+                        }
+                    } else {
+                        resultLog.append("  * 判定结果: 无法判定 (bounds 格式不正确, 非 4 组数字)\n")
+                    }
+                } catch (e: Exception) {
+                    resultLog.append("  * 判定解析 error: ${e.message}\n")
+                }
+            } else {
+                resultLog.append("  * metadata 中不存在 bounds 字段，无法直接分析坐标包含关系\n")
+            }
+            resultLog.append("\n")
 
+            // 6. 分别计算丹东坐标在 z12, z13, z14 对应 tile x/y，并用 SQL 查询验证
+            resultLog.append("6. 丹东瓦片索引计算与精确匹配验证:\n")
             var dandongExists = false
             for (z in listOf(12, 13, 14)) {
                 val n = 1 shl z
+                // 计算标准 XYZ 瓦片编号
                 val x = Math.floor((targetLon + 180.0) / 360.0 * n).toInt()
                 val latRad = Math.toRadians(targetLat)
                 val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
+                // TMS y 坐标
                 val tmsY = n - 1 - y
+
+                resultLog.append("  * Zoom $z:\n")
+                resultLog.append("    - 标准 XYZ 坐标: X=$x, Y=$y\n")
+                resultLog.append("    - 对应 TMS 坐标: X=$x, Y=$tmsY\n")
 
                 var countXYZ = 0L
                 try {
@@ -1878,18 +1897,25 @@ ${finalStyleJsonString ?: "None"}
                     dandongExists = true
                 }
 
-                resultLog.append("Zoom $z:\n")
-                resultLog.append("  - (Standard XYZ) X=$x, Y=$y -> exists=$xyzExists ($countXYZ matching tiles)\n")
-                resultLog.append("  - (TMS format)   X=$x, Y=$tmsY -> exists=$tmsExists ($countTMS matching tiles)\n")
+                resultLog.append("    [SQL] SELECT COUNT(*) FROM tiles WHERE zoom_level=$z AND tile_column=$x AND tile_row=$y (XYZ) -> $countXYZ 张\n")
+                resultLog.append("    [SQL] SELECT COUNT(*) FROM tiles WHERE zoom_level=$z AND tile_column=$x AND tile_row=$tmsY (TMS) -> $countTMS 张\n")
             }
             resultLog.append("\n")
 
-            // 7. 输出 Dandong Tile Exists = true/false
-            resultLog.append("Dandong Tile Exists = $dandongExists\n")
-            if (!dandongExists) {
-                resultLog.append("当前 MBTiles 不包含丹东区域离线数据\n")
+            // 7. 输出最终结论
+            resultLog.append("7. 最终诊断结论:\n")
+            resultLog.append("  A. 当前 MBTiles 是否包含丹东区域: ${if (dandongExists) "Dandong Tile Exists = true" else "Dandong Tile Exists = false"}\n")
+            val zoomsRangeStr = if (actualMinZoom != null && actualMaxZoom != null) {
+                "$actualMinZoom 到 $actualMaxZoom"
             } else {
-                resultLog.append("当前 MBTiles 包含丹东相关离线数据\n")
+                "未知"
+            }
+            resultLog.append("  B. 当前 MBTiles 实际包含的 zoom 层级: $zoomsRangeStr\n")
+            resultLog.append("  C. 结论提示: ")
+            if (!dandongExists) {
+                resultLog.append("“当前数据库仅包含世界概览层，不包含丹东离线影像数据”\n")
+            } else {
+                resultLog.append("“当前数据库包含丹东区域离线影像数据”\n")
             }
 
         } catch (e: Exception) {
