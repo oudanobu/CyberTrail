@@ -7,7 +7,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
 
-class LocalTileServer(private val mbtilesPath: String) {
+class LocalTileServer(val mbtilesPath: String) {
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
     private val TAG = "LocalTileServer"

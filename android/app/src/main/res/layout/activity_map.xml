@@ -274,6 +274,21 @@
                         android:padding="6dp"
                         android:clickable="true"
                         android:focusable="true"/>
+
+                    <TextView
+                        android:id="@+id/btn_mbtiles_scan"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:background="#22D3EE"
+                        android:text="🔍 MBTiles Coverage Scan"
+                        android:textColor="#0F172A"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:gravity="center"
+                        android:padding="6dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
                 </LinearLayout>
 
                 <ScrollView

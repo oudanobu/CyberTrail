@@ -88,6 +88,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var lastGpsLongitude: Double? = null
     private val httpRequestsHistory = java.util.concurrent.CopyOnWriteArrayList<String>()
     private var cameraForcedTestResult: String = "Not started"
+    private var mbtilesScanResult: String? = null
 
     private lateinit var locationManager: LocationManager
 
@@ -267,6 +268,11 @@ ${finalStyleJsonString ?: "None"}
                 Log.e("CYBERTRAIL_MAP", "Failed to export diagnostic file", e)
                 android.widget.Toast.makeText(this@MapActivity, "❌ 导出失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
+        }
+
+        val btnMbtilesScan = findViewById<TextView>(R.id.btn_mbtiles_scan)
+        btnMbtilesScan.setOnClickListener {
+            runMbtilesScan()
         }
 
         var isDragging = false
@@ -1081,6 +1087,47 @@ ${finalStyleJsonString ?: "None"}
             layerSourceValueStr = lSrcIdVal ?: "None"
         }
 
+        val liveSourcesList = if (currentStyle != null) {
+            try {
+                currentStyle.sources.joinToString("\n") { s ->
+                    val sId = s.id
+                    val sClass = s.javaClass.simpleName
+                    val sUri = try { s.javaClass.getMethod("getUri").invoke(s)?.toString() ?: "None" } catch(e: Exception) { "N/A" }
+                    val sUrl = try { s.javaClass.getMethod("getUrl").invoke(s)?.toString() ?: "None" } catch(e: Exception) { "N/A" }
+                    val sTiles = try {
+                        val tilesVal = s.javaClass.getMethod("getTiles").invoke(s)
+                        if (tilesVal is Array<*>) tilesVal.joinToString(",")
+                        else if (tilesVal is List<*>) tilesVal.joinToString(",")
+                        else tilesVal?.toString() ?: "None"
+                    } catch(e: Exception) { "N/A" }
+                    "  * [Source] id=$sId, type=$sClass, tiles=$sTiles, url=$sUrl, uri=$sUri"
+                }
+            } catch (e: Exception) {
+                "Error building sources list: ${e.message}"
+            }
+        } else {
+            "No Style Loaded"
+        }
+
+        val liveLayersList = if (currentStyle != null) {
+            try {
+                currentStyle.layers.joinToString("\n") { l ->
+                    val lId = l.id
+                    val lClass = l.javaClass.simpleName
+                    val lSrcId = try { l.javaClass.getMethod("getSourceId").invoke(l)?.toString() ?: "None" } catch(e: Exception) { "N/A" }
+                    val lSrcLayer = try { l.javaClass.getMethod("getSourceLayer").invoke(l)?.toString() ?: "None" } catch(e: Exception) { "N/A" }
+                    val lVis = try { l.visibility.value?.toString() ?: "None" } catch(e: Exception) { "N/A" }
+                    val lMin = try { l.minZoom.toString() } catch(e: Exception) { "N/A" }
+                    val lMax = try { l.maxZoom.toString() } catch(e: Exception) { "N/A" }
+                    "  * [Layer] id=$lId, type=$lClass, source=$lSrcId, source-layer=$lSrcLayer, visibility=$lVis, minzoom=$lMin, maxzoom=$lMax"
+                }
+            } catch (e: Exception) {
+                "Error building layers list: ${e.message}"
+            }
+        } else {
+            "No Style Loaded"
+        }
+
         val styleFullyLoadedStr = try {
             val m = currentStyle?.javaClass?.getMethod("isFullyLoaded")
             if (m != null) {
@@ -1231,7 +1278,14 @@ ${finalStyleJsonString ?: "None"}
             "Error: ${e.message}"
         }
 
-        hudDiagnosticCounters.text = "--- CAMERA FORCED TEST ---\n" +
+        val scanSection = if (mbtilesScanResult != null) {
+            mbtilesScanResult + "\n\n========================================\n\n"
+        } else {
+            ""
+        }
+
+        hudDiagnosticCounters.text = scanSection +
+                "--- CAMERA FORCED TEST ---\n" +
                 cameraForcedTestResult + "\n" +
                 "========================================\n\n" +
                 "--- NATIVE PIPELINE DIAGNOSTICS ---\n" +
@@ -1293,8 +1347,8 @@ ${finalStyleJsonString ?: "None"}
                 "StyleTileUrl:\n$sTileUrl\n\n" +
                 "SourceCount: $sCount\n" +
                 "LayerCount: $lCount\n\n" +
-                "SourceList:\n$sList\n\n" +
-                "LayerList:\n$lList\n\n" +
+                "SourceList (Real-time Config):\n$liveSourcesList\n\n" +
+                "LayerList (Real-time Config):\n$liveLayersList\n\n" +
                 "LayerMinZoom: $lMinZoom\n" +
                 "LayerMaxZoom: $lMaxZoom\n\n" +
                 "SourceMinZoom: $sMinZoom\n" +
@@ -1672,5 +1726,185 @@ ${finalStyleJsonString ?: "None"}
             sb.append("Error listing fields: ${e.message}\n")
         }
         return sb.toString()
+    }
+
+    private fun runMbtilesScan() {
+        val resultLog = StringBuilder()
+        resultLog.append("=== MBTILES COVERAGE SCAN ===\n\n")
+
+        val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
+        val mapsDir = java.io.File(baseDir, "maps")
+        val worldFile = java.io.File(mapsDir, "world.mbtiles")
+        val mbtilesFile = if (worldFile.exists()) {
+            worldFile
+        } else {
+            val mbtilesFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles") }
+            mbtilesFiles?.firstOrNull()
+        }
+        val mbtilesPath = localTileServer?.mbtilesPath ?: mbtilesFile?.absolutePath
+
+        if (mbtilesPath == null) {
+            resultLog.append("Error: 没有检测到离线 MBTiles 数据库文件！\n")
+            resultLog.append("Dandong Tile Exists = false\n")
+            resultLog.append("当前 MBTiles 不包含丹东区域离线数据\n")
+            runOnUiThread {
+                mbtilesScanResult = resultLog.toString()
+                isHudExpanded = true
+                updateDiagnosticHud()
+            }
+            return
+        }
+
+        resultLog.append("数据库文件路径:\n$mbtilesPath\n\n")
+
+        var db: android.database.sqlite.SQLiteDatabase? = null
+        try {
+            db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                mbtilesPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            )
+
+            // 2. 输出 minZoom, maxZoom 
+            var metadataMinZoom: String? = null
+            var metadataMaxZoom: String? = null
+            var bounds: String? = null
+            var center: String? = null
+
+            try {
+                val cursor = db.rawQuery("SELECT name, value FROM metadata", null)
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(0)
+                    val value = cursor.getString(1)
+                    when (name) {
+                        "minzoom" -> metadataMinZoom = value
+                        "maxzoom" -> metadataMaxZoom = value
+                        "bounds" -> bounds = value
+                        "center" -> center = value
+                    }
+                }
+                cursor.close()
+            } catch (e: Exception) {
+                resultLog.append("读取 metadata 异常: ${e.message}\n")
+            }
+
+            resultLog.append("--- Metadata Config ---\n")
+            resultLog.append("minZoom: ${metadataMinZoom ?: "Not Found"}\n")
+            resultLog.append("maxZoom: ${metadataMaxZoom ?: "Not Found"}\n\n")
+
+            // 5. 输出数据库覆盖范围 bounds, center
+            resultLog.append("--- Coverage (Metadata) ---\n")
+            resultLog.append("bounds: ${bounds ?: "Not Found"}\n")
+            resultLog.append("center: ${center ?: "Not Found"}\n\n")
+
+            // 3. 输出 tiles 里的实际 zoom_level 极值
+            var actualMinZoom: Int? = null
+            var actualMaxZoom: Int? = null
+            try {
+                val cursorMin = db.rawQuery("SELECT MIN(zoom_level) FROM tiles", null)
+                if (cursorMin.moveToFirst()) {
+                    actualMinZoom = cursorMin.getInt(0)
+                }
+                cursorMin.close()
+
+                val cursorMax = db.rawQuery("SELECT MAX(zoom_level) FROM tiles", null)
+                if (cursorMax.moveToFirst()) {
+                    actualMaxZoom = cursorMax.getInt(0)
+                }
+                cursorMax.close()
+            } catch (e: Exception) {
+                resultLog.append("查询 `tiles` 表极值异常: ${e.message}\n")
+            }
+
+            resultLog.append("--- Zoom level (Actual in tiles table) ---\n")
+            resultLog.append("SELECT MIN(zoom_level): ${actualMinZoom ?: "None"}\n")
+            resultLog.append("SELECT MAX(zoom_level): ${actualMaxZoom ?: "None"}\n\n")
+
+            // 4. 每个 zoom 层的瓦片数量
+            resultLog.append("--- Tiles Count per Zoom level ---\n")
+            try {
+                val cursorCount = db.rawQuery(
+                    "SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level ORDER BY zoom_level", null
+                )
+                while (cursorCount.moveToNext()) {
+                    val z = cursorCount.getInt(0)
+                    val count = cursorCount.getLong(1)
+                    resultLog.append("Zoom $z: $count tiles\n")
+                }
+                cursorCount.close()
+            } catch (e: Exception) {
+                resultLog.append("查询瓦片数量异常: ${e.message}\n")
+            }
+            resultLog.append("\n")
+
+            // 6. 检查丹东坐标 40.123665, 124.389216 对应 tile x/y
+            val targetLat = 40.123665
+            val targetLon = 124.389216
+            resultLog.append("--- Check Dandong coordinates: $targetLat, $targetLon ---\n")
+
+            var dandongExists = false
+            for (z in listOf(12, 13, 14)) {
+                val n = 1 shl z
+                val x = Math.floor((targetLon + 180.0) / 360.0 * n).toInt()
+                val latRad = Math.toRadians(targetLat)
+                val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
+                val tmsY = n - 1 - y
+
+                var countXYZ = 0L
+                try {
+                    val cursorXYZ = db.rawQuery(
+                        "SELECT COUNT(*) FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                        arrayOf(z.toString(), x.toString(), y.toString())
+                    )
+                    if (cursorXYZ.moveToFirst()) {
+                        countXYZ = cursorXYZ.getLong(0)
+                    }
+                    cursorXYZ.close()
+                } catch (e: Exception) {}
+
+                var countTMS = 0L
+                try {
+                    val cursorTMS = db.rawQuery(
+                        "SELECT COUNT(*) FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                        arrayOf(z.toString(), x.toString(), tmsY.toString())
+                    )
+                    if (cursorTMS.moveToFirst()) {
+                        countTMS = cursorTMS.getLong(0)
+                    }
+                    cursorTMS.close()
+                } catch (e: Exception) {}
+
+                val xyzExists = countXYZ > 0
+                val tmsExists = countTMS > 0
+                if (xyzExists || tmsExists) {
+                    dandongExists = true
+                }
+
+                resultLog.append("Zoom $z:\n")
+                resultLog.append("  - (Standard XYZ) X=$x, Y=$y -> exists=$xyzExists ($countXYZ matching tiles)\n")
+                resultLog.append("  - (TMS format)   X=$x, Y=$tmsY -> exists=$tmsExists ($countTMS matching tiles)\n")
+            }
+            resultLog.append("\n")
+
+            // 7. 输出 Dandong Tile Exists = true/false
+            resultLog.append("Dandong Tile Exists = $dandongExists\n")
+            if (!dandongExists) {
+                resultLog.append("当前 MBTiles 不包含丹东区域离线数据\n")
+            } else {
+                resultLog.append("当前 MBTiles 包含丹东相关离线数据\n")
+            }
+
+        } catch (e: Exception) {
+            resultLog.append("Database diagnostic error: ${e.message}\n")
+        } finally {
+            try {
+                db?.close()
+            } catch (e: Exception) {}
+        }
+
+        runOnUiThread {
+            mbtilesScanResult = resultLog.toString()
+            isHudExpanded = true
+            updateDiagnosticHud()
+            android.widget.Toast.makeText(this@MapActivity, "MBTiles Scan Done!", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 }
