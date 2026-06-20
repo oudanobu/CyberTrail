@@ -113,6 +113,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         // MapLibre requires initialization
         try {
             Mapbox.getInstance(this)
+            Mapbox.setConnected(true) // 强制认为处于联网状态，确保断网也能加载本地 LocalTileServer 的瓦片
         } catch (e: Exception) {
             Log.e(TAG, "Mapbox instance init error", e)
         }
