@@ -149,7 +149,7 @@ class OfflineMapActivity : AppCompatActivity() {
     }
 
     private fun copyToClipboard(label: String, text: String?) {
-        if (text.isNullOrEmpty()) {
+        if (text == null || text.isEmpty()) {
             Toast.makeText(this, "复制内容为空", Toast.LENGTH_SHORT).show()
             return
         }
@@ -157,7 +157,13 @@ class OfflineMapActivity : AppCompatActivity() {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText(label, text)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "🚀 $label 极速下载连接已成功复制到�    private fun renderCurrentPath() {
+            Toast.makeText(this, "🚀 " + label + " 极速下载连接已成功复制到剪贴板!", Toast.LENGTH_SHORT).show();
+        } catch (e: Exception) {
+            Toast.makeText(this, "复制到剪贴板失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private fun renderCurrentPath() {
         // Refresh available items from manager
         regions = mapManager.getAvailableRegions()
         dems = mapManager.getAvailableDems()
@@ -171,7 +177,8 @@ class OfflineMapActivity : AppCompatActivity() {
 
             // Categories list
             items.add(OfflineTreeItem.Folder("🗺️ 离线地图树状分类浏览器 (按世界->大洲->国家层级下钻)", "🌍", "点击展开树形浏览器配置各层级瓦片包", listOf("世界")))
-            items.add(OfflineTreeItem.Folder("🏔️ DEM 地形高程数据资源中心", "🏔️", "SRTM HGT 30m、ASTER Tif高阶数据，支持添加自定义 GitHub 地形", listOf("DEM数据")))
+            items.add(OfflineTreeItem.Folder("🏔️ DEM 地形高程数据资源中心", "🏔️", "SRTM HGT 30m、ASTER Tif高阶数据，支持添加自定义 地形", listOf("DEM数据")))
+            items.add(OfflineTreeItem.Folder("⭐️ GitHub 专业开源地图与地形数模生态中心", "⭐️", "聚合编译引擎、点云解算工具及全球三维切片开源贡献源", listOf("GitHub生态")))
             items.add(OfflineTreeItem.Folder("📚 离线高频数据下载源与使用姿势指南", "📚", "提供官方离线包、雷达测绘、ASTER和GitHub镜像下载指南", listOf("使用手册")))
             items.add(OfflineTreeItem.Folder("🛠️ 开发者模式：专业地图转换链与规则源码", "🛠️", "OSM源码、Planetiler编译规则、Joerd高程栅格转换工具及GPKG/SHP底座", listOf("开发者模式")))
             items.add(OfflineTreeItem.Folder("⚙️ 物理数据目录诊断机自我检测", "⚙️", "极速检索Maps和DEM数据目录名及物理数据结构完整性", listOf("诊断系统")))
@@ -233,35 +240,112 @@ class OfflineMapActivity : AppCompatActivity() {
                 "使用手册" -> {
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 NASA SRTM 30m Global DEM",
-                        "来自美国太空局/地质局雷达测绘计划 (.hgt 格式)",
-                        "• 简评：最经典的30米雷达地面高程数值，无损测试极其优异。\n• 配适：由于是30m高密度，非常适合攀岩、登山、山脊越野。\n• 导入说明：可直接将 .hgt 文件放入 /CyberTrail/DEM 目录下，系统即可无感自动加载并动态生成任意航线高低图表。",
+                        "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: .hgt",
+                        "📡 美国太空局雷达地形测绘计划，经典全球30米级多维大底座。\n\n📥 极速下载与导入标准步骤:\n1. 登录 EarthData (点击下面[打开主站])\n2. 高频定位并搜索目标感兴趣区域数据\n3. 导出 SRTMGL1 高程类型数据包\n4. 单击下载对应的 .hgt 格式物理成果文件\n5. 放置入闪存: /CyberTrail/DEM 目录下，或直接点击[导入本地]按钮无感加载！",
                         "https://earthdata.nasa.gov",
                         "https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/Eurasia/",
                         "https://github.com/tilezen/joerd"
                     ))
                     items.add(OfflineTreeItem.HelpManual(
-                        "📘 ASTER GDEM 先进遥感地形表面",
-                        "来自 NASA 与日本林野厅(METI) 联合遥感测量 (.tif 格式)",
-                        "• 简评：全球1弧秒（相当于30m）超清三维表面高程，数字水文条件完美匹配。\n• 配适：高寒冻海、落叶丛林、陡峭悬崖的三维阴影与实时坡向解算精度极具说服力。\n• 提示：系统支持将 .tif 遥感图拖入，自动解压渲染，坡度偏差在3%以内。",
+                        "📘 ASTER GDEM 先进遥感物理表面高程",
+                        "推荐级别: 🌟🌟🌟🌟 | 推荐格式: GeoTIFF (.tif)",
+                        "📡 NASA 与日本林野厅行星联合光学及多波谱解算高精密网幅。\n\n📥 极速下载与导入标准步骤:\n1. 访问 ASTER 地面中心并搜索地图瓦片\n2. 在搜索结果中勾选 ASTER Global DEM 遥感产品\n3. 导出并获取生成的 TIFF (.tif) 数字模型文件\n4. 复制成果并传入大内存卡: /CyberTrail/DEM 物理路径下",
                         "https://asterweb.jpl.nasa.gov",
                         "https://search.earthdata.nasa.gov/search",
                         "https://github.com/bopen/elevation"
                     ))
                     items.add(OfflineTreeItem.HelpManual(
-                        "📘 Copernicus Cop-30 极地无死角数模",
-                        "欧空局 ESA 与空中客车提供 (.tif /.tiff 格式)",
-                        "• 简评：去除了阴影斑驳和雷达死角填补的超精品三维地球模型。\n• 特点：对阿尔卑斯、喜马拉雅等极端高度地带做了完全重校准解密。\n• 提示：支持导入本客户端的物理 DEM 目录下，直接解算瞬间爬坡率及垂直陡度。",
+                        "📘 Copernicus Cop-30 欧盟空天高净高程",
+                        "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: GeoTIFF (.tif)",
+                        "📡 欧空局 ESA 与空中客车强力校准，完美解决雷达夹角和阴影斑驳噪声点。\n\n📥 极速下载与导入标准步骤:\n1. 打开 Copernicus 可视化选择接口\n2. 定位大洲或特定省份区域坐标，下载最新发布的 Cop-30 极精地形瓦片\n3. 确认格式为标准 .tif 或 .tiff 多级压缩瓦片\n4. 放入手机闪存 /CyberTrail/DEM 并一键触发刷新生效",
                         "https://earth.esa.int",
                         "https://copernicus-dem-30m.s3.amazonaws.com/",
                         "https://github.com/simonfuhrmann/mve"
                     ))
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 OpenTopography 航天立体地形与点云数据集",
-                        "世界级开源高精确山体三模资源库",
-                        "• 简评：不仅有 30 米 SRTM，还有 1 米 级 LiDAR 精密等高线文件可做局部极限越野徒步实验。\n• 下载说明：选择目标边界区域，输出格式选 .hgt 或是 GeoTIFF，极力推荐在 GitHub 的 OpenTopography 镜像脚本直接批量打包拉取！",
+                        "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: .tif / .hgt",
+                        "📡 极客与学术级高清遥感镜像中心，包含1米级高密度 LiDAR 散点解算。\n\n📥 极速下载与导入标准步骤:\n1. 框选并锁定您的越野探险目标区域\n2. 输出格式选取 .hgt 或者标准的 GeoTIFF\n3. 提交后台执行，下载压缩包并解压\n4. 放置对应的 .tif 或是 .hgt 格式文件入 /CyberTrail/DEM 物理文件夹",
                         "https://opentopography.org",
                         "https://portal.opentopography.org/raster",
                         "https://github.com/geofabrik/openstreetmap-mbtiles-generator"
+                    ))
+                }
+                "GitHub生态" -> {
+                    // 地图资源
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📦 OpenMapTiles 矢量切片核心方案 (Star: 4.8k)",
+                        "全球开源矢量航迹地图编译框架",
+                        "• 项目地址: https://github.com/openmaptiles/openmaptiles\n• 核心用途: 提供一整套基于 Docker 容器的 OSM 转 MBTiles 工具链。\n• 优点: 支持多国语言、道路拓扑骨架和户外等高线，完美配适 MVT 14级全速渲染！",
+                        "https://github.com/openmaptiles/openmaptiles",
+                        "https://github.com/openmaptiles/openmaptiles",
+                        "https://github.com/openmaptiles/openmaptiles"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📦 Planetiler 极致多线程矢量切片引擎 (Star: 1.5k)",
+                        "Java 极速 MVT 切片生成器",
+                        "• 项目地址: https://github.com/onthegomap/planetiler\n• 核心用途: 将全球 OpenStreetMap 的 .pbf 数据编译成标准的 .mbtiles。\n• 优点: 性能奇高，支持任意机器配置，能在短时间内打包全省乃至全国离线图级！",
+                        "https://github.com/onthegomap/planetiler",
+                        "https://github.com/onthegomap/planetiler",
+                        "https://github.com/onthegomap/planetiler"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📦 Tilemaker 无外部依赖单机切片生成器 (Star: 3.1k)",
+                        "C++ 编写的无缝 OSM 到 MBTiles 构建器",
+                        "• 项目地址: https://github.com/systemed/tilemaker\n• 核心用途: 脱离任何复杂服务端，可直接单机编译单省/单市地图。\n• 优点: 配合自定义 JSON profile 进行个性化的底图图标提取与配饰渲染！",
+                        "https://github.com/systemed/tilemaker",
+                        "https://github.com/systemed/tilemaker",
+                        "https://github.com/systemed/tilemaker"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📦 MapTiler Open Data 开源数据集 (Star: 1.2k)",
+                        "开源公共地理、地形与地貌切片数据库",
+                        "• 项目地址: https://github.com/maptiler\n• 核心用途: 涵盖全球各类开放卫星地图瓦片数据库配置和免费图层。\n• 优点: 提供了与 CyberTrail 完全兼容的离线静态地图样本库！",
+                        "https://github.com/maptiler",
+                        "https://github.com/maptiler",
+                        "https://github.com/maptiler"
+                    ))
+
+                    // DEM 资源
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📐 Tilezen / Joerd 地势高程流解算工具 (Star: 920)",
+                        "全球海拔/DEM 数据自动化下载合并套件",
+                        "• 项目地址: https://github.com/tilezen/joerd\n• 核心用途: 自适应下载 AWS Mapzen 地物模型，并执行自动拼版及格式转换。\n• 适用: 生成无死角的全球多分辨率2.5D高程遥感格式底图！",
+                        "https://github.com/tilezen/joerd",
+                        "https://github.com/tilezen/joerd",
+                        "https://github.com/tilezen/joerd"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📐 OpenTopography Tools API 脚本 (Star: 430)",
+                        "官方推荐的高清多格式高程批量提取套件",
+                        "• 项目地址: https://github.com/opentopography\n• 核心用途: 支持批量、按地标、经纬度边界框调取超清 HGT 及 TIFF 栅格图。\n• 优势: 省去繁琐的网页筛选步骤，极速进行局部越野航路高程获取！",
+                        "https://github.com/opentopography",
+                        "https://github.com/opentopography",
+                        "https://github.com/opentopography"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📐 GDAL 开源地理空间开发底座 (Star: 4.9k)",
+                        "全球 GIS 最权威的地形与切片重采样转换程序",
+                        "• 项目地址: https://github.com/OSGeo/gdal\n• 核心用途: 提供了 `gdal_translate`, `gdal_dem` 等极其强悍的命令行格式工具。\n• 作用: 拼接、裁切、重采样多张 ASTER .tif 片段至本地可用 DEM 数据！",
+                        "https://github.com/OSGeo/gdal",
+                        "https://github.com/OSGeo/gdal",
+                        "https://github.com/OSGeo/gdal"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📐 Rasterio Python 地形栅格操作包 (Star: 1.8k)",
+                        "基于 GDAL 的现代 Python 地图处理流",
+                        "• 项目地址: https://github.com/rasterio/rasterio\n• 核心用途: 优雅、高性能地读取、过滤、转化山河高程矩阵及像素瓦片。\n• 适用: 自研离线地图转换链条和越野登高高程提取程序的开发者！",
+                        "https://github.com/rasterio/rasterio",
+                        "https://github.com/rasterio/rasterio",
+                        "https://github.com/rasterio/rasterio"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "📐 Terrain Tiles AWS 数据资源 (Star: 760)",
+                        "全球瓦片化多阶等高切片汇总描述库",
+                        "• 项目地址: https://github.com/tilezen/joerd\n• 核心用途: 多层地形模型合并及高度、山峰阻碍解算。\n• 优点: 提供标准的瓦片化高程资源库说明书及现成下载节点！",
+                        "https://github.com/tilezen/joerd",
+                        "https://github.com/tilezen/joerd",
+                        "https://github.com/tilezen/joerd"
                     ))
                 }
                 "开发者模式" -> {

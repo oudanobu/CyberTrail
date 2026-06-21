@@ -101,7 +101,8 @@ class OfflineTreeAdapter(
                 }
 
                 holder.tvDetails.visibility = View.VISIBLE
-                holder.tvDetails.text = "🌐 目标文件: ${region.id}.mbtiles\n📍 推荐配适地理范围:\n[ ${region.bounds} ]\n📦 切片估算总数: ${region.tileCount}张瓦片"
+                val formatTip = "📋 直接导入格式诊断与配适:\n• MBTiles, TIF, TIFF, HGT ➡️ [✅ 直接导入使用]\n• OSM.PBF, SHP, GPKG ➡️ [❌ 需专业转码, 无法直接载入]"
+                holder.tvDetails.text = "🌐 目标文件: ${region.id}.mbtiles\n📍 推荐配适地理范围:\n[ ${region.bounds} ]\n📦 切片估算总数: ${region.tileCount}张瓦片\n\n$formatTip"
 
                 holder.layoutActions.visibility = View.VISIBLE
                 
@@ -151,8 +152,9 @@ class OfflineTreeAdapter(
                     "liaoning_srtm" -> "📍 中国辽宁省全域及丹东、沈阳等核心山区"
                     else -> "📍 自定义导入高密覆照网幅"
                 }
-                holder.tvDetails.text = "🛰️ 覆盖区域: %s\n📁 系统指定命名: %s\n⚙️ 格式规格: %s\n🏃‍♂️ 适用: CyberTrail 野外爬升/瞬时坡度/地形高低自动建模".format(
-                    coverageString, dem.fileName, dem.demType
+                val formatTip = "📋 直接导入格式诊断与配适:\n• GeoTIFF (.tif/.tiff), SRTM (.hgt) ➡️ [✅ 直接导入使用]\n• DEM NASA BIL/IMG / WebPage ➡️ [❌ 需下载或专业GIS转换]"
+                holder.tvDetails.text = "🛰️ 覆盖区域: %s\n📁 系统指定命名: %s\n⚙️ 格式规格: %s\n🏃‍♂️ 适用: CyberTrail 野外爬升/瞬时坡度/地形高低自动建模\n\n%s".format(
+                    coverageString, dem.fileName, dem.demType, formatTip
                 )
 
                 holder.layoutActions.visibility = View.VISIBLE
