@@ -872,24 +872,40 @@ ${finalStyleJsonString ?: "None"}
     }
 
     private var lastFetchTime = 0L
+    private var lastGpsAltitude: Double? = null
 
     private fun updateTerrainHud(lat: Double, lon: Double) {
         val now = System.currentTimeMillis()
         if (now - lastFetchTime < 1000) return // Throttle
         lastFetchTime = now
 
+        // Check if current camera query coordinates are highly close to GPS center and GPS has altitude
+        val gpsLat = lastGpsLatitude
+        val gpsLon = lastGpsLongitude
+        val gpsAlt = lastGpsAltitude
+        if (gpsLat != null && gpsLon != null && gpsAlt != null && Math.abs(lat - gpsLat) < 0.0005 && Math.abs(lon - gpsLon) < 0.0005) {
+            runOnUiThread {
+                hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
+                hudSlope.text = "坡度: --"
+                hudAspect.text = "坡向: --"
+            }
+            return
+        }
+
         demSystem.terrainAnalyzer.analyzeLocationAsync(lat, lon) { result ->
-            if (result != null) {
-                runOnUiThread {
-                    hudElevation.text = "海拔: %.1f m".format(result.elevation)
-                    hudSlope.text = "坡度: %.1f°".format(result.slope)
-                    hudAspect.text = "坡向: %.1f°".format(result.aspect)
-                }
-            } else {
-                runOnUiThread {
-                    hudElevation.text = "海拔: 获取中..."
-                    hudSlope.text = "坡度: 获取中..."
-                    hudAspect.text = "坡向: 获取中..."
+            runOnUiThread {
+                if (result != null && result.source == "DEM" && result.elevation != null) {
+                    hudElevation.text = "海拔: %.1f m (数据来源: DEM)".format(result.elevation)
+                    hudSlope.text = "坡度: %.1f° (数据来源: DEM)".format(result.slope ?: 0.0)
+                    hudAspect.text = "坡向: %.1f°".format(result.aspect ?: 0.0)
+                } else if (result != null && result.source == "SIMULATION" && result.elevation != null) {
+                    hudElevation.text = "海拔: %.1f m (数据来源: SIMULATION)".format(result.elevation)
+                    hudSlope.text = "坡度: %.1f° (数据来源: SIMULATION)".format(result.slope ?: 0.0)
+                    hudAspect.text = "坡向: %.1f°".format(result.aspect ?: 0.0)
+                } else {
+                    hudElevation.text = "海拔: 无DEM数据"
+                    hudSlope.text = "坡度: --"
+                    hudAspect.text = "坡向: --"
                 }
             }
         }
@@ -898,6 +914,11 @@ ${finalStyleJsonString ?: "None"}
     override fun onLocationChanged(location: Location) {
         val lat = location.latitude
         val lon = location.longitude
+        if (location.hasAltitude()) {
+            lastGpsAltitude = location.altitude
+        } else {
+            lastGpsAltitude = null
+        }
         lastGpsLatitude = lat
         lastGpsLongitude = lon
         updateTerrainHud(lat, lon)

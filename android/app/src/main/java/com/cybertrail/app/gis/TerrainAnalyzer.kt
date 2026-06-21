@@ -10,41 +10,49 @@ class TerrainAnalyzer(
 ) {
 
     data class AnalysisResult(
-        val elevation: Double,
-        val slope: Double,
-        val aspect: Double
+        val elevation: Double?,
+        val slope: Double?,
+        val aspect: Double?,
+        val source: String
     )
 
     fun analyzeLocation(lat: Double, lon: Double): AnalysisResult {
-        try {
-            val dLat = 0.0001
-            val dLon = 0.0001
-            
-            // Query 5 locations centered around the point from offline DEM systems
-            val centerElev = demSystem.getElevation(lat, lon)
-            val hN = demSystem.getElevation(lat + dLat, lon)
-            val hS = demSystem.getElevation(lat - dLat, lon)
-            val hE = demSystem.getElevation(lat, lon + dLon)
-            val hW = demSystem.getElevation(lat, lon - dLon)
+        // Query real elevation from real files first
+        val realElev = demSystem.getRealElevation(lat, lon)
+        if (realElev != null) {
+            try {
+                val dLat = 0.0001
+                val dLon = 0.0001
+                
+                val hN = demSystem.getRealElevation(lat + dLat, lon) ?: realElev
+                val hS = demSystem.getRealElevation(lat - dLat, lon) ?: realElev
+                val hE = demSystem.getRealElevation(lat, lon + dLon) ?: realElev
+                val hW = demSystem.getRealElevation(lat, lon - dLon) ?: realElev
 
-            val cellSideM = 11.1 // approx meters per 0.0001 degree
-            val dzDx = (hE - hW) / (2.0 * cellSideM)
-            val dzDy = (hN - hS) / (2.0 * cellSideM)
+                val cellSideM = 11.1 // approx meters per 0.0001 degree
+                val dzDx = (hE - hW) / (2.0 * cellSideM)
+                val dzDy = (hN - hS) / (2.0 * cellSideM)
 
-            val riseRun = Math.sqrt(dzDx * dzDx + dzDy * dzDy)
-            val slopeDeg = Math.toDegrees(Math.atan(riseRun))
+                val riseRun = Math.sqrt(dzDx * dzDx + dzDy * dzDy)
+                val slopeDeg = Math.toDegrees(Math.atan(riseRun))
 
-            var aspectRad = Math.atan2(dzDy, -dzDx)
-            if (aspectRad < 0.0) {
-                aspectRad += 2.0 * Math.PI
+                var aspectRad = Math.atan2(dzDy, -dzDx)
+                if (aspectRad < 0.0) {
+                    aspectRad += 2.0 * Math.PI
+                }
+                val aspectDeg = Math.toDegrees(aspectRad)
+
+                return AnalysisResult(realElev, slopeDeg, aspectDeg, "DEM")
+            } catch (e: Exception) {
+                return AnalysisResult(realElev, 0.0, 0.0, "DEM")
             }
-            val aspectDeg = Math.toDegrees(aspectRad)
-
-            return AnalysisResult(centerElev, slopeDeg, aspectDeg)
-        } catch (e: Exception) {
-            val elev = demSystem.getSimulatedHeight(lat, lon)
-            return AnalysisResult(elev, 0.0, 0.0)
         }
+        
+        // If there's NO local offline DEM, but we want GPS elevation to be prioritized if available!
+        // (Wait, GPS altitude is fetched directly from the GPS sensor inside MapActivity.kt's location callback or similar).
+        // Since TerrainAnalyzer only queries offline database heightmaps, if there are no dem files, we return null fields
+        // with "NONE" so MapActivity knows there is NO DEM data, and we avoid SIMULATION altitude.
+        return AnalysisResult(null, null, null, "NONE")
     }
 
     fun analyzeLocationAsync(lat: Double, lon: Double, callback: (AnalysisResult?) -> Unit) {

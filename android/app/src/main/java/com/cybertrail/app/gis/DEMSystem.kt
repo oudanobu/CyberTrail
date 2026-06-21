@@ -72,6 +72,10 @@ class DEMSystem(private val context: Context) {
         return Pair(lat, lng)
     }
 
+    fun getRealElevation(lat: Double, lon: Double): Double? {
+        return demLoader.getElevation(lat, lon)
+    }
+
     fun getElevation(lat: Double, lon: Double): Double {
         val realElevation = demLoader.getElevation(lat, lon)
         if (realElevation != null) {
@@ -137,7 +141,7 @@ class DEMSystem(private val context: Context) {
     }
 
     fun getSlope(lat: Double, lon: Double): Double {
-        return terrainAnalyzer.analyzeLocation(lat, lon).slope
+        return terrainAnalyzer.analyzeLocation(lat, lon).slope ?: 0.0
     }
 
     fun getSlopeColorHex(slope: Double): String {
