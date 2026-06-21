@@ -12,8 +12,13 @@ class OfflineMapManager(private val context: Context) {
     private val TAG = "OfflineMapManager"
     
     val baseDir: File = File(Environment.getExternalStorageDirectory(), "CyberTrail")
-    val mapsDir: File = File(baseDir, "maps")
-    val demDir: File = File(baseDir, "dem")
+    val mapsDir: File = File(baseDir, "Maps")
+    val demDir: File = File(baseDir, "DEM")
+    val routesDir: File = File(baseDir, "Routes")
+    val tracksDir: File = File(baseDir, "Tracks")
+    val poiDir: File = File(baseDir, "POI")
+    val cacheDir: File = File(baseDir, "Cache")
+    val exportDir: File = File(baseDir, "Export")
     
     init {
         initDirectories()
@@ -22,8 +27,11 @@ class OfflineMapManager(private val context: Context) {
     
     private fun initDirectories() {
         if (!baseDir.exists()) baseDir.mkdirs()
-        if (!mapsDir.exists()) mapsDir.mkdirs()
-        if (!demDir.exists()) demDir.mkdirs()
+        listOf(mapsDir, demDir, routesDir, tracksDir, poiDir, cacheDir, exportDir).forEach { dir ->
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+        }
     }
 
     private fun copyWorldMapIfNeeded() {

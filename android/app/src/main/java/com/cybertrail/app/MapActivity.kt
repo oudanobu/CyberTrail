@@ -391,7 +391,9 @@ ${finalStyleJsonString ?: "None"}
 
     private fun runOfflineDiagnostics() {
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
-        val mapsDir = java.io.File(baseDir, "maps")
+        val mapsDirUpper = java.io.File(baseDir, "Maps")
+        val mapsDirLower = java.io.File(baseDir, "maps")
+        val mapsDir = if (mapsDirUpper.exists()) mapsDirUpper else mapsDirLower
         if (!mapsDir.exists()) {
             mapsDir.mkdirs()
         }
@@ -458,7 +460,9 @@ ${finalStyleJsonString ?: "None"}
         }
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
-        val mapsDir = java.io.File(baseDir, "maps")
+        val mapsDirUpper = java.io.File(baseDir, "Maps")
+        val mapsDirLower = java.io.File(baseDir, "maps")
+        val mapsDir = if (mapsDirUpper.exists()) mapsDirUpper else mapsDirLower
         val worldFile = java.io.File(mapsDir, "world.mbtiles")
         val mbtilesFile = if (worldFile.exists()) {
             worldFile
@@ -1734,7 +1738,9 @@ ${finalStyleJsonString ?: "None"}
         resultLog.append("=== MBTILES COVERAGE SCAN ===\n\n")
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
-        val mapsDir = java.io.File(baseDir, "maps")
+        val mapsDirUpper = java.io.File(baseDir, "Maps")
+        val mapsDirLower = java.io.File(baseDir, "maps")
+        val mapsDir = if (mapsDirUpper.exists()) mapsDirUpper else mapsDirLower
         val worldFile = java.io.File(mapsDir, "world.mbtiles")
         val mbtilesFile = if (worldFile.exists()) {
             worldFile
