@@ -52,6 +52,22 @@ class LocalTileServer(val mbtilesPath: String) {
                 }
             }
 
+            // Automatic Discovery: Scan mapsDir for any other *.mbtiles files
+            val otherFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles", ignoreCase = true) }
+            if (otherFiles != null) {
+                for (file in otherFiles) {
+                    if (!dbsMap.containsKey(file.name)) {
+                        try {
+                            val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                            dbsMap[file.name] = database
+                            Log.i(TAG, "MultiMapManager (Auto-Discovered): Loaded: ${file.name}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "MultiMapManager: Failed loading auto-discovered map ${file.name}", e)
+                        }
+                    }
+                }
+            }
+
             // Fallback: if none of the above are loaded, try loading the primary mbtilesPath itself
             if (dbsMap.isEmpty()) {
                 val primaryFile = java.io.File(mbtilesPath)
@@ -191,6 +207,30 @@ class LocalTileServer(val mbtilesPath: String) {
                 }
             }
         }
+
+        // Search in auto-discovered user imported maps if not found in candidates
+        for ((fileName, database) in dbsMap) {
+            if (!candidates.contains(fileName) && database.isOpen) {
+                var tileData: ByteArray? = null
+                try {
+                    val cursor = database.rawQuery(
+                        "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                        arrayOf(z.toString(), x.toString(), y.toString())
+                    )
+                    if (cursor.moveToFirst()) {
+                        tileData = cursor.getBlob(0)
+                        Log.i(TAG, "TILE_FOUND in auto-discovered map $fileName (size=${tileData.size}) for z=$z x=$x y=$y")
+                    }
+                    cursor.close()
+                    if (tileData != null) {
+                        return tileData
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Query error in auto-discovered $fileName: ${e.message}")
+                }
+            }
+        }
+
         Log.d(TAG, "TILE_NOT_FOUND in any loaded MBTiles database")
         return null
     }

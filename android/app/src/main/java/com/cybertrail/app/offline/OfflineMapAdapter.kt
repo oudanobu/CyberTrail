@@ -12,7 +12,8 @@ import com.cybertrail.app.R
 class OfflineMapAdapter(
     private val maps: List<OfflineMapRegion>,
     private val onDownloadClick: (OfflineMapRegion) -> Unit,
-    private val onDeleteClick: (OfflineMapRegion) -> Unit
+    private val onDeleteClick: (OfflineMapRegion) -> Unit,
+    private val onImportClick: (OfflineMapRegion) -> Unit
 ) : RecyclerView.Adapter<OfflineMapAdapter.MapViewHolder>() {
 
     class MapViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -20,6 +21,7 @@ class OfflineMapAdapter(
         val infoText: TextView = view.findViewById(R.id.infoText)
         val progressBar: ProgressBar = view.findViewById(R.id.progressBar)
         val actionButton: Button = view.findViewById(R.id.actionButton)
+        val importButton: Button = view.findViewById(R.id.importButton)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MapViewHolder {
@@ -32,11 +34,15 @@ class OfflineMapAdapter(
         holder.nameText.text = map.name
         
         val sizeMB = map.expectedSizeBytes / (1024 * 1024)
-        val info = "大小: ${sizeMB}MB | 瓦片数: ${map.tileCount}\n范围: ${map.bounds}"
+        val pathInfo = if (map.isDownloaded) "状态: ✅ 已载入\n物理路径: ${map.localPath}" else "状态: ❌ 未加载"
+        val info = "理想大小: ${sizeMB}MB | 预估瓦片数: ${map.tileCount}\n范围: ${map.bounds}\n$pathInfo"
         holder.infoText.text = info
         
+        holder.importButton.setOnClickListener { onImportClick(map) }
+
         if (map.isDownloaded) {
             holder.actionButton.text = "删除"
+            holder.actionButton.isEnabled = true
             holder.actionButton.setOnClickListener { onDeleteClick(map) }
             holder.progressBar.visibility = View.GONE
         } else if (map.isDownloading) {

@@ -27,7 +27,8 @@ class DEMLoader(private val context: Context) {
         val files = demDir.listFiles { _, name -> 
             name.endsWith(".hgt", ignoreCase = true) || 
             name.endsWith(".bil", ignoreCase = true) || 
-            name.endsWith(".tif", ignoreCase = true) 
+            name.endsWith(".tif", ignoreCase = true) ||
+            name.endsWith(".img", ignoreCase = true)
         }
         return files != null && files.isNotEmpty()
     }
@@ -40,7 +41,8 @@ class DEMLoader(private val context: Context) {
         val files = demDir.listFiles { _, name -> 
             name.endsWith(".hgt", ignoreCase = true) || 
             name.endsWith(".bil", ignoreCase = true) || 
-            name.endsWith(".tif", ignoreCase = true) 
+            name.endsWith(".tif", ignoreCase = true) ||
+            name.endsWith(".img", ignoreCase = true)
         }
         
         if (files != null && files.isNotEmpty()) {

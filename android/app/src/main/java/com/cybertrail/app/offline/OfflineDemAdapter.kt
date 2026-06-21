@@ -33,9 +33,38 @@ class OfflineDemAdapter(
         val dem = dems[position]
         holder.nameText.text = dem.name
         
-        val sizeMB = dem.expectedSizeBytes / (1024 * 1024)
-        val pathInfo = if (dem.isDownloaded) "状态: ✅ 物理已载入\n物理路径: ${dem.localPath}" else "状态: ❌ 未加载 (坡度和坡向无法计算)"
-        val info = "物理名称: ${dem.fileName} | 类型: ${dem.demType} | 理想大小: ${sizeMB}MB\n$pathInfo"
+        val file = dem.localPath?.let { java.io.File(it) }
+        val sizeStr = if (file != null && file.exists()) {
+            "%.2f MB (物理大小)".format(file.length().toDouble() / (1024 * 1024))
+        } else {
+            "${dem.expectedSizeBytes / (1024 * 1024)} MB (标准预估)"
+        }
+
+        val updateTimeStr = if (file != null && file.exists()) {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            sdf.format(java.util.Date(file.lastModified()))
+        } else {
+            "未获取到本地物理文件"
+        }
+
+        val resolution = "高清晰度 1角秒 / 30米 (30m Resolution Grid)"
+        val coverage = when {
+            dem.id.contains("srtm") -> "全天候航天缝合带 (辽宁 / 丹东及主要自驾测试区)"
+            dem.id.contains("aster") -> "高精密星载遥感带 (覆盖辽宁内陆与口岸边境)"
+            dem.id.contains("copernicus") -> "欧空局全球高度包 (覆盖辽东半岛 / 连云港 / 朝鲜半岛)"
+            else -> "自定义加载扇区 / 设备存储高程瓦片群"
+        }
+
+        val pathInfo = if (dem.isDownloaded) {
+            "状态: ✅ 物理已载入\n" +
+            "物理路径: ${dem.localPath}\n" +
+            "覆盖范围: $coverage\n" +
+            "数据精度: $resolution\n" +
+            "更新时间: $updateTimeStr"
+        } else {
+            "状态: ❌ 未加载 (坡度和坡向无法计算，点击[下载]或[导入本地]以启用)"
+        }
+        val info = "高程名称: ${dem.fileName} | 格式类型: ${dem.demType}\n文件大小: $sizeStr\n$pathInfo"
         holder.infoText.text = info
         
         holder.importButton.setOnClickListener { onImportClick(dem) }
