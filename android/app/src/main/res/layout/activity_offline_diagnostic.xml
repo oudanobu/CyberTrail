@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F5F5F5">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/diagnostic_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#2E7D32"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Title Header -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🛡️ 离线地图与 DEM 数据自我诊断系统"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#1B5E20"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Directory Information Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="#FFFFFF">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="📂 数据系统根路径与目录状态"
+                        android:textStyle="bold"
+                        android:textSize="14sp"
+                        android:textColor="#333333"
+                        android:layout_marginBottom="12dp" />
+
+                    <!-- Maps Path Info -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="离线影像地图包目录 (MBTiles):"
+                            android:textSize="12sp"
+                            android:textColor="#777777" />
+
+                        <TextView
+                            android:id="@+id/tv_maps_path"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="/storage/emulated/0/CyberTrail/Maps"
+                            android:textSize="13sp"
+                            android:textStyle="italic"
+                            android:textColor="#333333" />
+
+                        <TextView
+                            android:id="@+id/tv_maps_status"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="扫描状态: 获取中..."
+                            android:textSize="12sp"
+                            android:textColor="#2E7D32" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#EEEEEE"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp" />
+
+                    <!-- DEM Path Info -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="离线地形高程目录 (DEM):"
+                            android:textSize="12sp"
+                            android:textColor="#777777" />
+
+                        <TextView
+                            android:id="@+id/tv_dem_path"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="/storage/emulated/0/CyberTrail/DEM"
+                            android:textSize="13sp"
+                            android:textStyle="italic"
+                            android:textColor="#333333" />
+
+                        <TextView
+                            android:id="@+id/tv_dem_status"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="扫描状态: 获取中..."
+                            android:textSize="12sp"
+                            android:textColor="#2E7D32" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Diagnostics Action Header -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔍 实时扫描并检测物理文件 :"
+                android:textStyle="bold"
+                android:textColor="#555555"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Dynamic Scan List Container -->
+            <LinearLayout
+                android:id="@+id/diagnostic_items_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- Empty State Warning if no files found -->
+            <TextView
+                android:id="@+id/tv_empty_diagnostic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:padding="32dp"
+                android:text="⚠️ 目录下目前没有物理加载文件\n(请在离线工具包中点击“导入”或“打开下载页”获取数据)"
+                android:textColor="#999999"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <!-- Footnote Info -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                app:cardBackgroundColor="#E8F5E9">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="💡 诊断指标说明"
+                        android:textStyle="bold"
+                        android:textColor="#2E7D32"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="• 已识别：后缀名及文件结构合规、SQLite 读取成功且包含合法元数据元组。\n• 未识别：通常是不支持的第三方自定义私有地图切片格式，或文件名没有匹配的预置标准范围。\n• 损坏：文件大小为0或SQLite数据库异常、头部损坏、文件已被截断（可通过重新传入原件解决）。"
+                        android:textColor="#455A64"
+                        android:textSize="11sp"
+                        android:lineSpacingMultiplier="1.2" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

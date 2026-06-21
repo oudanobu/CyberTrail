@@ -47,7 +47,7 @@ class OfflineMapAdapter(
                 ).apply {
                     setMargins(16, 24, 16, 8)
                 }
-                textSize = 15spToPx(parent.context)
+                textSize = 15f
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 setTextColor(0xFF388E3C.toInt()) // Forest green accent for category header
                 gravity = Gravity.START
@@ -57,10 +57,6 @@ class OfflineMapAdapter(
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_map_region, parent, false)
             return MapViewHolder(view)
         }
-    }
-
-    private fun 15spToPx(context: android.content.Context): Float {
-        return 15f // fallbacks or direct text size in sp
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
@@ -114,17 +110,12 @@ class OfflineMapAdapter(
             itemHolder.actionButton.setOnClickListener { onDeleteClick(map) }
             itemHolder.progressBar.visibility = View.GONE
         } else {
-            // Unloaded presets: show download link if 大洲级 or 国家级
-            if (map.category == "大洲级" || map.category == "国家级") {
-                itemHolder.actionButton.visibility = View.VISIBLE
-                itemHolder.actionButton.text = "打开下载页"
-                itemHolder.actionButton.setBackgroundColor(0xFF1E88E5.toInt()) // Blue accent
-                itemHolder.actionButton.setTextColor(android.graphics.Color.WHITE)
-                itemHolder.actionButton.setOnClickListener { onDownloadClick(map) }
-            } else {
-                // Hide actionButton for other categories when not loaded
-                itemHolder.actionButton.visibility = View.GONE
-            }
+            // Always show open download page button for all categories when not downloaded
+            itemHolder.actionButton.visibility = View.VISIBLE
+            itemHolder.actionButton.text = "打开下载页"
+            itemHolder.actionButton.setBackgroundColor(0xFF1E88E5.toInt()) // Blue accent
+            itemHolder.actionButton.setTextColor(android.graphics.Color.WHITE)
+            itemHolder.actionButton.setOnClickListener { onDownloadClick(map) }
             itemHolder.progressBar.visibility = View.GONE
         }
     }

@@ -114,11 +114,7 @@ class OfflineMapActivity : AppCompatActivity() {
             }
         }
         if (result == null) {
-            result = uri.path
-            val cut = result?.lastIndexOf('/')
-            if (cut != null && cut != -1) {
-                result = result.substring(cut + 1)
-            }
+            result = uri.path?.substringAfterLast('/')
         }
         return result
     }
@@ -180,6 +176,7 @@ class OfflineMapActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, 1001, 1, "导入任意离线地图").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        menu.add(0, 1002, 2, "数据诊断系统").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         return true
     }
 
@@ -187,19 +184,22 @@ class OfflineMapActivity : AppCompatActivity() {
         if (item.itemId == 1001) {
             launchFilePickerMap(null)
             return true
+        } else if (item.itemId == 1002) {
+            startActivity(Intent(this, OfflineDiagnosticActivity::class.java))
+            return true
         }
         return super.onOptionsItemSelected(item)
     }
 
     private fun buildCategorizedList(rawList: List<OfflineMapRegion>): List<OfflineMapRegion> {
-        val categories = listOf("世界级", "大洲级", "国家级", "一级行政区", "二级行政区", "三级行政区")
+        val categories = listOf("地球级", "大洲级", "国家级", "一级行政区", "二级行政区", "三级行政区")
         val result = mutableListOf<OfflineMapRegion>()
         
         categories.forEach { cat ->
             val catItems = rawList.filter { it.category == cat }
             if (catItems.isNotEmpty()) {
                 val displayName = when(cat) {
-                    "世界级" -> "世界级 (World Map) [显示推荐: zoom 0~6]"
+                    "地球级" -> "地球级 (World Map) [显示推荐: zoom 0~6]"
                     "大洲级" -> "大洲级 (Continent Map) [显示推荐: zoom 4~8]"
                     "国家级" -> "国家级 (National Map) [显示推荐: zoom 6~10]"
                     "一级行政区" -> "一级行政区 (Provincial / Level 1) [显示推荐: zoom 9~12]"

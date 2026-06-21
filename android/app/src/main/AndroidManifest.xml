@@ -42,5 +42,9 @@
             android:name=".offline.OfflineMapActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".offline.OfflineDiagnosticActivity"
+            android:exported="false" />
+
     </application>
 </manifest>
