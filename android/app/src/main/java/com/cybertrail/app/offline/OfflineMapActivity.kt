@@ -70,13 +70,16 @@ class OfflineMapActivity : AppCompatActivity() {
                 val downloadId = mapManager.startDownload(map)
                 if (downloadId == -1L) {
                     map.isDownloading = false
+                    map.downloadId = -1L
                     android.util.Log.e("OfflineMapActivity", "Failed to start download for ${map.id} (returned -1)")
                     Toast.makeText(this, "启动下载失败：请确认系统 DownloadManager 已经启用，并在应用设置中授予相关存储权限", Toast.LENGTH_LONG).show()
                 } else {
+                    map.downloadId = downloadId
                     Toast.makeText(this, "开始下载 ${map.name}，任务编号: $downloadId", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 map.isDownloading = false
+                map.downloadId = -1L
                 android.util.Log.e("OfflineMapActivity", "Failed to start download for ${map.id}", e)
                 Toast.makeText(this, "意外异常: ${e.message}。已记录崩溃日志，防止闪退！", Toast.LENGTH_LONG).show()
             }
@@ -100,13 +103,16 @@ class OfflineMapActivity : AppCompatActivity() {
                 val downloadId = mapManager.startDemDownload(dem)
                 if (downloadId == -1L) {
                     dem.isDownloading = false
+                    dem.downloadId = -1L
                     android.util.Log.e("OfflineMapActivity", "Failed to start download for DEM ${dem.id} (returned -1)")
                     Toast.makeText(this, "启动高程下载失败：请确认系统 DownloadManager 已经启用，并在应用设置中授予相关存储权限", Toast.LENGTH_LONG).show()
                 } else {
+                    dem.downloadId = downloadId
                     Toast.makeText(this, "开始下载高程: ${dem.name} (任务编号: $downloadId)", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 dem.isDownloading = false
+                dem.downloadId = -1L
                 android.util.Log.e("OfflineMapActivity", "Failed to start DEM download for ${dem.id}", e)
                 Toast.makeText(this, "意外异常: ${e.message}。已记录崩溃日志，防止闪退！", Toast.LENGTH_LONG).show()
             }
@@ -252,26 +258,94 @@ class OfflineMapActivity : AppCompatActivity() {
         progressThread = null
     }
 
-    private fun checkDownloadProgress() {
+    private fun getDownloadProgress(downloadId: Long): Int {
+        if (downloadId <= 0) return -1
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        var cursor: android.database.Cursor? = null
+        try {
+            cursor = downloadManager.query(query)
+            if (cursor != null && cursor.moveToFirst()) {
+                val bytesDownloadedIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                val bytesTotalIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                
+                if (bytesDownloadedIdx != -1 && bytesTotalIdx != -1 && statusIdx != -1) {
+                    val bytesDownloaded = cursor.getInt(bytesDownloadedIdx)
+                    val bytesTotal = cursor.getInt(bytesTotalIdx)
+                    val status = cursor.getInt(statusIdx)
+                    
+                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                        return 100
+                    }
+                    if (status == DownloadManager.STATUS_FAILED) {
+                        return -2 // Failed
+                    }
+                    if (bytesTotal > 0) {
+                        return ((bytesDownloaded * 100L) / bytesTotal).toInt()
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            android.util.Log.e("OfflineMapActivity", "Error querying download progress for $downloadId", e)
+        } finally {
+            cursor?.close()
+        }
+        return 0
+    }
+
+    private fun checkDownloadProgress() {
         var needsUpdate = false
+        var completedAny = false
         
         // Match maps status
         regions.forEach { region ->
-            if (region.isDownloading) {
-                // Here we would query downloadManager download status dynamically
-                needsUpdate = true
+            if (region.isDownloading && region.downloadId != -1L) {
+                val prg = getDownloadProgress(region.downloadId)
+                if (prg == 100) {
+                    region.isDownloading = false
+                    region.isDownloaded = true
+                    completedAny = true
+                } else if (prg == -2) {
+                    region.isDownloading = false
+                    region.downloadId = -1L
+                    needsUpdate = true
+                } else if (prg >= 0) {
+                    if (region.progress != prg) {
+                        region.progress = prg
+                        needsUpdate = true
+                    }
+                }
             }
         }
         
         // Match dems status
         dems.forEach { dem ->
-            if (dem.isDownloading) {
-                needsUpdate = true
+            if (dem.isDownloading && dem.downloadId != -1L) {
+                val prg = getDownloadProgress(dem.downloadId)
+                if (prg == 100) {
+                    dem.isDownloading = false
+                    dem.isDownloaded = true
+                    completedAny = true
+                } else if (prg == -2) {
+                    dem.isDownloading = false
+                    dem.downloadId = -1L
+                    needsUpdate = true
+                } else if (prg >= 0) {
+                    if (dem.progress != prg) {
+                        dem.progress = prg
+                        needsUpdate = true
+                    }
+                }
             }
         }
 
-        if (needsUpdate) {
+        if (completedAny) {
+            Toast.makeText(this, "有新离线产品下载完成，正在自动重新扫描加载中", Toast.LENGTH_SHORT).show()
+            val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
+            sendBroadcast(completeIntent)
+            refreshList()
+        } else if (needsUpdate) {
             if (::adapter.isInitialized) {
                 adapter.notifyDataSetChanged()
             }
@@ -282,8 +356,26 @@ class OfflineMapActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
-        regions = mapManager.getAvailableRegions()
-        dems = mapManager.getAvailableDems()
+        val downloadingMaps = regions.filter { it.isDownloading }.associateBy { it.id }
+        val downloadingDems = dems.filter { it.isDownloading }.associateBy { it.id }
+
+        regions = mapManager.getAvailableRegions().map { newMap ->
+            downloadingMaps[newMap.id]?.let { oldMap ->
+                newMap.isDownloading = true
+                newMap.downloadId = oldMap.downloadId
+                newMap.progress = oldMap.progress
+            }
+            newMap
+        }
+
+        dems = mapManager.getAvailableDems().map { newDem ->
+            downloadingDems[newDem.id]?.let { oldDem ->
+                newDem.isDownloading = true
+                newDem.downloadId = oldDem.downloadId
+                newDem.progress = oldDem.progress
+            }
+            newDem
+        }
         
         if (::adapter.isInitialized && ::demAdapter.isInitialized) {
             adapter = OfflineMapAdapter(regions, { map ->
@@ -296,12 +388,15 @@ class OfflineMapActivity : AppCompatActivity() {
                     val downloadId = mapManager.startDownload(map)
                     if (downloadId == -1L) {
                         map.isDownloading = false
+                        map.downloadId = -1L
                         Toast.makeText(this, "启动下载失败", Toast.LENGTH_SHORT).show()
                     } else {
+                        map.downloadId = downloadId
                         Toast.makeText(this, "开始下载 ${map.name}...", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     map.isDownloading = false
+                    map.downloadId = -1L
                     Toast.makeText(this, "下载启动失败: ${e.message}", Toast.LENGTH_LONG).show()
                 }
                 adapter.notifyDataSetChanged()
@@ -323,12 +418,15 @@ class OfflineMapActivity : AppCompatActivity() {
                     val downloadId = mapManager.startDemDownload(dem)
                     if (downloadId == -1L) {
                         dem.isDownloading = false
+                        dem.downloadId = -1L
                         Toast.makeText(this, "启动高程下载失败", Toast.LENGTH_SHORT).show()
                     } else {
+                        dem.downloadId = downloadId
                         Toast.makeText(this, "开始下载高程: ${dem.name}...", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     dem.isDownloading = false
+                    dem.downloadId = -1L
                     Toast.makeText(this, "下载高程启动失败: ${e.message}", Toast.LENGTH_LONG).show()
                 }
                 demAdapter.notifyDataSetChanged()

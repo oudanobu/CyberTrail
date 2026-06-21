@@ -10,5 +10,6 @@ data class OfflineDemRegion(
     var isDownloaded: Boolean = false,
     var isDownloading: Boolean = false,
     var progress: Int = 0,
-    var localPath: String? = null
+    var localPath: String? = null,
+    var downloadId: Long = -1L
 )
