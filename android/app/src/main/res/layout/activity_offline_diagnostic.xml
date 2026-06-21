@@ -130,6 +130,74 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
+            <!-- Diagnostic Quick Action Controls -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="#FFFFFF">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="🛠️ 离线数据后台快捷指令"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        android:textColor="#333333"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_rescan"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="38dp"
+                            android:layout_marginEnd="4dp"
+                            android:backgroundTint="#1976D2"
+                            android:textColor="#FFFFFF"
+                            android:text="🔄 重新扫描"
+                            android:textSize="11sp"
+                            android:padding="0dp" />
+
+                        <Button
+                            android:id="@+id/btn_import_map"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="38dp"
+                            android:layout_marginEnd="4dp"
+                            android:backgroundTint="#00897B"
+                            android:textColor="#FFFFFF"
+                            android:text="🗺️ 导入地图"
+                            android:textSize="11sp"
+                            android:padding="0dp" />
+
+                        <Button
+                            android:id="@+id/btn_import_dem"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="38dp"
+                            android:backgroundTint="#E65100"
+                            android:textColor="#FFFFFF"
+                            android:text="🏔️ 导入高程"
+                            android:textSize="11sp"
+                            android:padding="0dp" />
+
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
             <!-- Diagnostics Action Header -->
             <TextView
                 android:layout_width="match_parent"
