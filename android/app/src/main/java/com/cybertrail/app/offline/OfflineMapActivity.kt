@@ -1,11 +1,13 @@
 package com.cybertrail.app.offline
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
+import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
@@ -28,15 +30,6 @@ class OfflineMapActivity : AppCompatActivity() {
     private val IMPORT_DEM_REQUEST_CODE = 404
     private val IMPORT_MAP_REQUEST_CODE = 405
 
-    private val downloadReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            Toast.makeText(this@OfflineMapActivity, "离线产品下载已在后台全部处理完成", Toast.LENGTH_SHORT).show()
-            val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
-            sendBroadcast(completeIntent)
-            refreshList()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_offline_map)
@@ -58,73 +51,6 @@ class OfflineMapActivity : AppCompatActivity() {
         recyclerViewDems.layoutManager = LinearLayoutManager(this)
         
         refreshList()
-
-        // Bind map package adapter with download, delete, and import callback handlers
-        adapter = OfflineMapAdapter(regions, { map ->
-            try {
-                if (map.mbtilesUrl.isNullOrEmpty()) {
-                    Toast.makeText(this, "该地图包下载链接未配置或为本地自定义加载包", Toast.LENGTH_SHORT).show()
-                    return@OfflineMapAdapter
-                }
-                map.isDownloading = true
-                val downloadId = mapManager.startDownload(map)
-                if (downloadId == -1L) {
-                    map.isDownloading = false
-                    map.downloadId = -1L
-                    android.util.Log.e("OfflineMapActivity", "Failed to start download for ${map.id} (returned -1)")
-                    Toast.makeText(this, "启动下载失败：请确认系统 DownloadManager 已经启用，并在应用设置中授予相关存储权限", Toast.LENGTH_LONG).show()
-                } else {
-                    map.downloadId = downloadId
-                    Toast.makeText(this, "开始下载 ${map.name}，任务编号: $downloadId", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                map.isDownloading = false
-                map.downloadId = -1L
-                android.util.Log.e("OfflineMapActivity", "Failed to start download for ${map.id}", e)
-                Toast.makeText(this, "意外异常: ${e.message}。已记录崩溃日志，防止闪退！", Toast.LENGTH_LONG).show()
-            }
-            adapter.notifyDataSetChanged()
-        }, { map ->
-            mapManager.deleteMap(map)
-            refreshList()
-        }, { map ->
-            launchFilePickerMap(map)
-        })
-        recyclerView.adapter = adapter
-
-        // Bind DEM layout adapter with download, delete, and import handler callbacks
-        demAdapter = OfflineDemAdapter(dems, { dem ->
-            try {
-                if (dem.demUrl.isNullOrEmpty()) {
-                    Toast.makeText(this, "该高程下载链接未配置或为本地自定义高程包", Toast.LENGTH_SHORT).show()
-                    return@OfflineDemAdapter
-                }
-                dem.isDownloading = true
-                val downloadId = mapManager.startDemDownload(dem)
-                if (downloadId == -1L) {
-                    dem.isDownloading = false
-                    dem.downloadId = -1L
-                    android.util.Log.e("OfflineMapActivity", "Failed to start download for DEM ${dem.id} (returned -1)")
-                    Toast.makeText(this, "启动高程下载失败：请确认系统 DownloadManager 已经启用，并在应用设置中授予相关存储权限", Toast.LENGTH_LONG).show()
-                } else {
-                    dem.downloadId = downloadId
-                    Toast.makeText(this, "开始下载高程: ${dem.name} (任务编号: $downloadId)", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                dem.isDownloading = false
-                dem.downloadId = -1L
-                android.util.Log.e("OfflineMapActivity", "Failed to start DEM download for ${dem.id}", e)
-                Toast.makeText(this, "意外异常: ${e.message}。已记录崩溃日志，防止闪退！", Toast.LENGTH_LONG).show()
-            }
-            demAdapter.notifyDataSetChanged()
-        }, { dem ->
-            mapManager.deleteDem(dem)
-            refreshList()
-            Toast.makeText(this, "已彻底删除高程: ${dem.fileName}", Toast.LENGTH_SHORT).show()
-        }, { dem ->
-            launchFilePickerDem(dem)
-        })
-        recyclerViewDems.adapter = demAdapter
     }
 
     private fun launchFilePickerDem(dem: OfflineDemRegion) {
@@ -136,7 +62,7 @@ class OfflineMapActivity : AppCompatActivity() {
         startActivityForResult(Intent.createChooser(intent, "选择高程瓦片数据 (.hgt, .bil, .tif, .img)"), IMPORT_DEM_REQUEST_CODE)
     }
 
-    private fun launchFilePickerMap(map: OfflineMapRegion) {
+    private fun launchFilePickerMap(map: OfflineMapRegion?) {
         pendingImportMap = map
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "*/*"
@@ -157,14 +83,47 @@ class OfflineMapActivity : AppCompatActivity() {
         } else if (requestCode == IMPORT_MAP_REQUEST_CODE && resultCode == RESULT_OK) {
             val uri = data?.data
             val targetMap = pendingImportMap
-            if (uri != null && targetMap != null) {
-                importMapFile(uri, "${targetMap.id}.mbtiles")
+            if (uri != null) {
+                val originalName = getUriFileName(this, uri) ?: "imported_map_${System.currentTimeMillis()}.mbtiles"
+                val finalName = if (targetMap != null && !targetMap.id.startsWith("header_")) {
+                    "${targetMap.id}.mbtiles"
+                } else {
+                    originalName
+                }
+                importMapFile(uri, finalName)
                 refreshList()
             }
         }
     }
 
-    private fun importDemFile(sourceUri: android.net.Uri, destFileName: String) {
+    private fun getUriFileName(context: Context, uri: Uri): String? {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        result = cursor.getString(nameIndex)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("OfflineMapActivity", "Error getting Uri filename", e)
+            } finally {
+                cursor?.close()
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/')
+            if (cut != null && cut != -1) {
+                result = result.substring(cut + 1)
+            }
+        }
+        return result
+    }
+
+    private fun importDemFile(sourceUri: Uri, destFileName: String) {
         val destFile = java.io.File(mapManager.demDir, destFileName)
         try {
             contentResolver.openInputStream(sourceUri).use { inputStream ->
@@ -172,21 +131,24 @@ class OfflineMapActivity : AppCompatActivity() {
                     destFile.outputStream().use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
+                    Log.d("MAP_DEBUG", "ImportSuccess: DEM $destFileName imported successfully")
                     Toast.makeText(this, "高程文件成功导入! 已命名为: ${destFileName}", Toast.LENGTH_SHORT).show()
                     
                     val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
                     sendBroadcast(completeIntent)
                 } else {
+                    Log.e("MAP_DEBUG", "ImportFailed: opening Stream for DEM $destFileName failed")
                     Toast.makeText(this, "打开高程源文件失败", Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("OfflineMapActivity", "Import DEM failed", e)
+            Log.e("MAP_DEBUG", "ImportFailed: Stream error for DEM $destFileName", e)
+            Log.e("OfflineMapActivity", "Import DEM failed", e)
             Toast.makeText(this, "外部高程导入失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun importMapFile(sourceUri: android.net.Uri, destFileName: String) {
+    private fun importMapFile(sourceUri: Uri, destFileName: String) {
         val destFile = java.io.File(mapManager.mapsDir, destFileName)
         try {
             contentResolver.openInputStream(sourceUri).use { inputStream ->
@@ -194,249 +156,119 @@ class OfflineMapActivity : AppCompatActivity() {
                     destFile.outputStream().use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
+                    Log.d("MAP_DEBUG", "ImportSuccess: Map $destFileName imported successfully")
                     Toast.makeText(this, "离线地图包成功导入! 已命名为: ${destFileName}", Toast.LENGTH_SHORT).show()
                     
                     val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
                     sendBroadcast(completeIntent)
                 } else {
+                    Log.e("MAP_DEBUG", "ImportFailed: opening Stream for Map $destFileName failed")
                     Toast.makeText(this, "打开地图源文件失败", Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("OfflineMapActivity", "Import Map failed", e)
+            Log.e("MAP_DEBUG", "ImportFailed: Stream error for Map $destFileName", e)
+            Log.e("OfflineMapActivity", "Import Map failed", e)
             Toast.makeText(this, "外部地图导入失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("OfflineMapActivity", "Register download receiver error", e)
-        }
         refreshList()
-        startProgressChecker()
     }
 
-    override fun onPause() {
-        super.onPause()
-        try {
-            unregisterReceiver(downloadReceiver)
-        } catch (e: Exception) {
-            android.util.Log.d("OfflineMapActivity", "Download receiver already unregistered")
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, 1001, 1, "导入任意离线地图").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1001) {
+            launchFilePickerMap(null)
+            return true
         }
-        stopProgressChecker()
+        return super.onOptionsItemSelected(item)
     }
 
-    private var progressThread: Thread? = null
-    private var isCheckingProgress = false
-
-    private fun startProgressChecker() {
-        isCheckingProgress = true
-        progressThread = Thread {
-            while (isCheckingProgress) {
-                try {
-                    Thread.sleep(1500)
-                    runOnUiThread {
-                        checkDownloadProgress()
-                    }
-                } catch (e: Exception) {
-                }
-            }
-        }
-        progressThread?.start()
-    }
-
-    private fun stopProgressChecker() {
-        isCheckingProgress = false
-        progressThread?.interrupt()
-        progressThread = null
-    }
-
-    private fun getDownloadProgress(downloadId: Long): Int {
-        if (downloadId <= 0) return -1
-        val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val query = DownloadManager.Query().setFilterById(downloadId)
-        var cursor: android.database.Cursor? = null
-        try {
-            cursor = downloadManager.query(query)
-            if (cursor != null && cursor.moveToFirst()) {
-                val bytesDownloadedIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                val bytesTotalIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                
-                if (bytesDownloadedIdx != -1 && bytesTotalIdx != -1 && statusIdx != -1) {
-                    val bytesDownloaded = cursor.getInt(bytesDownloadedIdx)
-                    val bytesTotal = cursor.getInt(bytesTotalIdx)
-                    val status = cursor.getInt(statusIdx)
-                    
-                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                        return 100
-                    }
-                    if (status == DownloadManager.STATUS_FAILED) {
-                        return -2 // Failed
-                    }
-                    if (bytesTotal > 0) {
-                        return ((bytesDownloaded * 100L) / bytesTotal).toInt()
-                    }
-                }
-            }
-        } catch (e: Throwable) {
-            android.util.Log.e("OfflineMapActivity", "Error querying download progress for $downloadId", e)
-        } finally {
-            cursor?.close()
-        }
-        return 0
-    }
-
-    private fun checkDownloadProgress() {
-        var needsUpdate = false
-        var completedAny = false
+    private fun buildCategorizedList(rawList: List<OfflineMapRegion>): List<OfflineMapRegion> {
+        val categories = listOf("世界级", "大洲级", "国家级", "一级行政区", "二级行政区", "三级行政区")
+        val result = mutableListOf<OfflineMapRegion>()
         
-        // Match maps status
-        regions.forEach { region ->
-            if (region.isDownloading && region.downloadId != -1L) {
-                val prg = getDownloadProgress(region.downloadId)
-                if (prg == 100) {
-                    region.isDownloading = false
-                    region.isDownloaded = true
-                    completedAny = true
-                } else if (prg == -2) {
-                    region.isDownloading = false
-                    region.downloadId = -1L
-                    needsUpdate = true
-                } else if (prg >= 0) {
-                    if (region.progress != prg) {
-                        region.progress = prg
-                        needsUpdate = true
-                    }
+        categories.forEach { cat ->
+            val catItems = rawList.filter { it.category == cat }
+            if (catItems.isNotEmpty()) {
+                val displayName = when(cat) {
+                    "世界级" -> "世界级 (World Map) [显示推荐: zoom 0~6]"
+                    "大洲级" -> "大洲级 (Continent Map) [显示推荐: zoom 4~8]"
+                    "国家级" -> "国家级 (National Map) [显示推荐: zoom 6~10]"
+                    "一级行政区" -> "一级行政区 (Provincial / Level 1) [显示推荐: zoom 9~12]"
+                    "二级行政区" -> "二级行政区 (Municipal / Level 2) [显示推荐: zoom 12~14]"
+                    "三级行政区" -> "三级行政区 (District / Level 3) [显示推荐: zoom 14~16+]"
+                    else -> cat
                 }
+                result.add(
+                    OfflineMapRegion(
+                        id = "header_$cat",
+                        name = displayName,
+                        mbtilesUrl = null,
+                        demUrl = null,
+                        expectedSizeBytes = 0,
+                        tileCount = 0,
+                        bounds = "",
+                        category = cat,
+                        isDownloaded = false
+                    )
+                )
+                result.addAll(catItems)
             }
         }
-        
-        // Match dems status
-        dems.forEach { dem ->
-            if (dem.isDownloading && dem.downloadId != -1L) {
-                val prg = getDownloadProgress(dem.downloadId)
-                if (prg == 100) {
-                    dem.isDownloading = false
-                    dem.isDownloaded = true
-                    completedAny = true
-                } else if (prg == -2) {
-                    dem.isDownloading = false
-                    dem.downloadId = -1L
-                    needsUpdate = true
-                } else if (prg >= 0) {
-                    if (dem.progress != prg) {
-                        dem.progress = prg
-                        needsUpdate = true
-                    }
-                }
-            }
-        }
-
-        if (completedAny) {
-            Toast.makeText(this, "有新离线产品下载完成，正在自动重新扫描加载中", Toast.LENGTH_SHORT).show()
-            val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
-            sendBroadcast(completeIntent)
-            refreshList()
-        } else if (needsUpdate) {
-            if (::adapter.isInitialized) {
-                adapter.notifyDataSetChanged()
-            }
-            if (::demAdapter.isInitialized) {
-                demAdapter.notifyDataSetChanged()
-            }
-        }
+        return result
     }
 
     private fun refreshList() {
-        val downloadingMaps = regions.filter { it.isDownloading }.associateBy { it.id }
-        val downloadingDems = dems.filter { it.isDownloading }.associateBy { it.id }
-
-        regions = mapManager.getAvailableRegions().map { newMap ->
-            downloadingMaps[newMap.id]?.let { oldMap ->
-                newMap.isDownloading = true
-                newMap.downloadId = oldMap.downloadId
-                newMap.progress = oldMap.progress
-            }
-            newMap
-        }
-
-        dems = mapManager.getAvailableDems().map { newDem ->
-            downloadingDems[newDem.id]?.let { oldDem ->
-                newDem.isDownloading = true
-                newDem.downloadId = oldDem.downloadId
-                newDem.progress = oldDem.progress
-            }
-            newDem
-        }
+        // Direct scanning without background worker constraints or mock status loops
+        val rawRegions = mapManager.getAvailableRegions()
+        regions = buildCategorizedList(rawRegions)
+        dems = mapManager.getAvailableDems()
         
-        if (::adapter.isInitialized && ::demAdapter.isInitialized) {
-            adapter = OfflineMapAdapter(regions, { map ->
-                try {
-                    if (map.mbtilesUrl.isNullOrEmpty()) {
-                        Toast.makeText(this, "该地图包下载链接未配置或为本地自定义加载包", Toast.LENGTH_SHORT).show()
-                        return@OfflineMapAdapter
-                    }
-                    map.isDownloading = true
-                    val downloadId = mapManager.startDownload(map)
-                    if (downloadId == -1L) {
-                        map.isDownloading = false
-                        map.downloadId = -1L
-                        Toast.makeText(this, "启动下载失败", Toast.LENGTH_SHORT).show()
-                    } else {
-                        map.downloadId = downloadId
-                        Toast.makeText(this, "开始下载 ${map.name}...", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    map.isDownloading = false
-                    map.downloadId = -1L
-                    Toast.makeText(this, "下载启动失败: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-                adapter.notifyDataSetChanged()
-            }, { map ->
-                mapManager.deleteMap(map)
-                refreshList()
-            }, { map ->
-                launchFilePickerMap(map)
-            })
-            findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
+        adapter = OfflineMapAdapter(regions, { map ->
+            if (map.mbtilesUrl.isNullOrEmpty()) {
+                Toast.makeText(this, "该地图包下载链接未配置", Toast.LENGTH_SHORT).show()
+                return@OfflineMapAdapter
+            }
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(map.mbtilesUrl))
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法打开浏览器: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }, { map ->
+            mapManager.deleteMap(map)
+            refreshList()
+        }, { map ->
+            launchFilePickerMap(map)
+        })
+        findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
 
-            demAdapter = OfflineDemAdapter(dems, { dem ->
-                try {
-                    if (dem.demUrl.isNullOrEmpty()) {
-                        Toast.makeText(this, "该高程下载链接未配置或为本地自定义高程包", Toast.LENGTH_SHORT).show()
-                        return@OfflineDemAdapter
-                    }
-                    dem.isDownloading = true
-                    val downloadId = mapManager.startDemDownload(dem)
-                    if (downloadId == -1L) {
-                        dem.isDownloading = false
-                        dem.downloadId = -1L
-                        Toast.makeText(this, "启动高程下载失败", Toast.LENGTH_SHORT).show()
-                    } else {
-                        dem.downloadId = downloadId
-                        Toast.makeText(this, "开始下载高程: ${dem.name}...", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    dem.isDownloading = false
-                    dem.downloadId = -1L
-                    Toast.makeText(this, "下载高程启动失败: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-                demAdapter.notifyDataSetChanged()
-            }, { dem ->
-                mapManager.deleteDem(dem)
-                refreshList()
-            }, { dem ->
-                launchFilePickerDem(dem)
-            })
-            findViewById<RecyclerView>(R.id.recyclerViewDems).adapter = demAdapter
-        }
+        demAdapter = OfflineDemAdapter(dems, { dem ->
+            if (dem.demUrl.isNullOrEmpty()) {
+                Toast.makeText(this, "该高程下载链接未配置或为本地自定义包", Toast.LENGTH_SHORT).show()
+                return@OfflineDemAdapter
+            }
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(dem.demUrl))
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法打开浏览器: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }, { dem ->
+            mapManager.deleteDem(dem)
+            refreshList()
+            Toast.makeText(this, "已彻底删除高程: ${dem.fileName}", Toast.LENGTH_SHORT).show()
+        }, { dem ->
+            launchFilePickerDem(dem)
+        })
+        findViewById<RecyclerView>(R.id.recyclerViewDems).adapter = demAdapter
     }
 }

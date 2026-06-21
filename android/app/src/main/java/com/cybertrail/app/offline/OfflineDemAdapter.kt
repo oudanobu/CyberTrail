@@ -55,32 +55,41 @@ class OfflineDemAdapter(
             else -> "自定义加载扇区 / 设备存储高程瓦片群"
         }
 
+        val source = when {
+            dem.id.contains("srtm") -> "SRTM"
+            dem.id.contains("aster") -> "ASTER GDEM"
+            dem.id.contains("copernicus") -> "Copernicus"
+            else -> "USER_SAF_IMPORT"
+        }
+
         val pathInfo = if (dem.isDownloaded) {
-            "状态: ✅ 物理已载入\n" +
+            "状态: ✅ 已加载\n" +
+            "已加载文件名: ${dem.fileName}\n" +
             "物理路径: ${dem.localPath}\n" +
             "覆盖范围: $coverage\n" +
-            "数据精度: $resolution\n" +
+            "分辨率: 30m\n" +
+            "高程来源: $source\n" +
             "更新时间: $updateTimeStr"
         } else {
-            "状态: ❌ 未加载 (坡度和坡向无法计算，点击[下载]或[导入本地]以启用)"
+            "状态: ❌ 未加载 (坡度和坡向无法计算，点击[打开下载页]或[导入外部文件]以载入数据)"
         }
         val info = "高程名称: ${dem.fileName} | 格式类型: ${dem.demType}\n文件大小: $sizeStr\n$pathInfo"
         holder.infoText.text = info
         
+        holder.importButton.text = "导入"
         holder.importButton.setOnClickListener { onImportClick(dem) }
 
         if (dem.isDownloaded) {
             holder.actionButton.text = "删除"
+            holder.actionButton.setBackgroundColor(0xFFE53935.toInt()) // Red accent
+            holder.actionButton.setTextColor(android.graphics.Color.WHITE)
             holder.actionButton.isEnabled = true
             holder.actionButton.setOnClickListener { onDeleteClick(dem) }
             holder.progressBar.visibility = View.GONE
-        } else if (dem.isDownloading) {
-            holder.actionButton.text = "下载中"
-            holder.actionButton.isEnabled = false
-            holder.progressBar.visibility = View.VISIBLE
-            holder.progressBar.progress = dem.progress
         } else {
-            holder.actionButton.text = "下载"
+            holder.actionButton.text = "打开下载页"
+            holder.actionButton.setBackgroundColor(0xFF1E88E5.toInt()) // Blue accent
+            holder.actionButton.setTextColor(android.graphics.Color.WHITE)
             holder.actionButton.isEnabled = true
             holder.actionButton.setOnClickListener { onDownloadClick(dem) }
             holder.progressBar.visibility = View.GONE

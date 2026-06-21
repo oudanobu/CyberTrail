@@ -42,6 +42,7 @@ class TerrainAnalyzer(
                 }
                 val aspectDeg = Math.toDegrees(aspectRad)
 
+                Log.d("MAP_DEBUG", "DEMLoaded=true, DEMCoverage=Lat=${lat}/Lon=${lon}, ElevationSource=DEM, SlopeComputed=$slopeDeg, AspectComputed=$aspectDeg")
                 return AnalysisResult(realElev, slopeDeg, aspectDeg, "DEM")
             } catch (e: Exception) {
                 return AnalysisResult(realElev, 0.0, 0.0, "DEM")
