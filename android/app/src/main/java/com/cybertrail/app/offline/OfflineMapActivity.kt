@@ -157,9 +157,9 @@ class OfflineMapActivity : AppCompatActivity() {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText(label, text)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "🚀 " + label + " 极速下载连接已成功复制到剪贴板!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "🚀 " + label + " 极速下载连接已成功复制到剪贴板!", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "复制到剪贴板失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "复制到剪贴板失败: " + e.message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -426,7 +426,14 @@ class OfflineMapActivity : AppCompatActivity() {
         container.addView(tvLevel)
 
         val spinnerLevel = android.widget.Spinner(this)
-        val levelsList = listOf("世界", "大洲", "国家", "一级行政区", "二级行政区", "三级行政区")
+        val levelsList = listOf(
+            "地球级 (World)",
+            "大洲级 (Continent)",
+            "国家级 (Country)",
+            "省/州级 (Province)",
+            "市/郡级 (Prefecture)",
+            "区/县/景区 (District)"
+        )
         val levelAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, levelsList).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
@@ -492,13 +499,13 @@ class OfflineMapActivity : AppCompatActivity() {
                 dirName = name
             }
 
-            val category = when (level) {
-                "世界" -> "地球级"
-                "大洲" -> "大洲级"
-                "国家" -> "国家级"
-                "一级行政区" -> "一级行政区"
-                "二级行政区" -> "二级行政区"
-                "三级行政区" -> "三级行政区"
+            val category = when {
+                level.contains("World", ignoreCase = true) || level.contains("世界") -> "地球级"
+                level.contains("Continent", ignoreCase = true) || level.contains("大洲") -> "大洲级"
+                level.contains("Country", ignoreCase = true) || level.contains("国家") -> "国家级"
+                level.contains("Province", ignoreCase = true) || level.contains("一级行政区") -> "一级行政区"
+                level.contains("Prefecture", ignoreCase = true) || level.contains("二级行政区") -> "二级行政区"
+                level.contains("District", ignoreCase = true) || level.contains("三级行政区") -> "三级行政区"
                 else -> "一级行政区"
             }
 

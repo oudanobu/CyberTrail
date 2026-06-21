@@ -636,5 +636,3 @@ class OfflineMapManager(private val context: Context) {
     }
 
 }
-
-}
