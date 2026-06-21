@@ -879,15 +879,19 @@ ${finalStyleJsonString ?: "None"}
         if (now - lastFetchTime < 1000) return // Throttle
         lastFetchTime = now
 
-        // Check if current camera query coordinates are highly close to GPS center and GPS has altitude
-        val gpsLat = lastGpsLatitude
-        val gpsLon = lastGpsLongitude
-        val gpsAlt = lastGpsAltitude
-        if (gpsLat != null && gpsLon != null && gpsAlt != null && Math.abs(lat - gpsLat) < 0.0005 && Math.abs(lon - gpsLon) < 0.0005) {
+        val hasDem = demSystem.demLoader.hasOfflineDemFiles()
+
+        if (!hasDem) {
+            // DEM is not loaded: Slope and Aspect must display N/A
             runOnUiThread {
-                hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
-                hudSlope.text = "坡度: --"
-                hudAspect.text = "坡向: --"
+                val gpsAlt = lastGpsAltitude
+                if (gpsAlt != null) {
+                    hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
+                } else {
+                    hudElevation.text = "海拔: N/A"
+                }
+                hudSlope.text = "坡度: N/A"
+                hudAspect.text = "坡向: N/A"
             }
             return
         }
@@ -898,14 +902,15 @@ ${finalStyleJsonString ?: "None"}
                     hudElevation.text = "海拔: %.1f m (数据来源: DEM)".format(result.elevation)
                     hudSlope.text = "坡度: %.1f° (数据来源: DEM)".format(result.slope ?: 0.0)
                     hudAspect.text = "坡向: %.1f°".format(result.aspect ?: 0.0)
-                } else if (result != null && result.source == "SIMULATION" && result.elevation != null) {
-                    hudElevation.text = "海拔: %.1f m (数据来源: SIMULATION)".format(result.elevation)
-                    hudSlope.text = "坡度: %.1f° (数据来源: SIMULATION)".format(result.slope ?: 0.0)
-                    hudAspect.text = "坡向: %.1f°".format(result.aspect ?: 0.0)
                 } else {
-                    hudElevation.text = "海拔: 无DEM数据"
-                    hudSlope.text = "坡度: --"
-                    hudAspect.text = "坡向: --"
+                    val gpsAlt = lastGpsAltitude
+                    if (gpsAlt != null) {
+                        hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
+                    } else {
+                        hudElevation.text = "海拔: N/A"
+                    }
+                    hudSlope.text = "坡度: N/A"
+                    hudAspect.text = "坡向: N/A"
                 }
             }
         }
@@ -1310,7 +1315,23 @@ ${finalStyleJsonString ?: "None"}
             ""
         }
 
+        // Complete geoprocessing and file loading diagnostics
+        val hasDem = demSystem.demLoader.hasOfflineDemFiles()
+        val demDir = java.io.File(java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail"), "DEM")
+        val demFiles = demDir.listFiles { _, name -> name.endsWith(".hgt", ignoreCase = true) || name.endsWith(".bil", ignoreCase = true) || name.endsWith(".tif", ignoreCase = true) }
+        val demFilePath = demFiles?.firstOrNull()?.absolutePath ?: ""
+        val elevationSource = if (hasDem) "DEM" else if (lastGpsAltitude != null) "GPS" else "Fallback"
+        val slopeSource = if (hasDem) "DEM" else "Unavailable"
+
+        val demDiagnosticSection = "--- OFFLINE GEOPROCESSING DIAGNOSTICS ---\n" +
+                "DEMLoaded=$hasDem\n" +
+                "DEMFilePath=$demFilePath\n" +
+                "ElevationSource=$elevationSource\n" +
+                "SlopeSource=$slopeSource\n" +
+                "========================================\n\n"
+
         hudDiagnosticCounters.text = scanSection +
+                demDiagnosticSection +
                 "--- CAMERA FORCED TEST ---\n" +
                 cameraForcedTestResult + "\n" +
                 "========================================\n\n" +

@@ -11,7 +11,7 @@ class LocalTileServer(val mbtilesPath: String) {
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
     private val TAG = "LocalTileServer"
-    private var db: SQLiteDatabase? = null
+    private val dbsMap = java.util.concurrent.ConcurrentHashMap<String, SQLiteDatabase>()
     val port = 8080
 
     var onTileRequest: (() -> Unit)? = null
@@ -32,7 +32,40 @@ class LocalTileServer(val mbtilesPath: String) {
     fun start() {
         if (isRunning) return
         try {
-            db = SQLiteDatabase.openDatabase(mbtilesPath, null, SQLiteDatabase.OPEN_READONLY)
+            val mapsDir = java.io.File(mbtilesPath).parentFile ?: java.io.File("/storage/emulated/0/CyberTrail/Maps")
+            if (!mapsDir.exists()) {
+                mapsDir.mkdirs()
+            }
+
+            // Open all supported map packages that exist on disk
+            val fileNames = listOf("world.mbtiles", "china.mbtiles", "liaoning.mbtiles", "dandong.mbtiles")
+            for (fileName in fileNames) {
+                val file = java.io.File(mapsDir, fileName)
+                if (file.exists()) {
+                    try {
+                        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                        dbsMap[fileName] = database
+                        Log.i(TAG, "MultiMapManager: Loaded offline map pack: $fileName")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "MultiMapManager: Failed loading map: $fileName", e)
+                    }
+                }
+            }
+
+            // Fallback: if none of the above are loaded, try loading the primary mbtilesPath itself
+            if (dbsMap.isEmpty()) {
+                val primaryFile = java.io.File(mbtilesPath)
+                if (primaryFile.exists()) {
+                    try {
+                        val database = SQLiteDatabase.openDatabase(primaryFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                        dbsMap[primaryFile.name] = database
+                        Log.i(TAG, "MultiMapManager: Loaded fallback primary map: ${primaryFile.name}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "MultiMapManager: Failed loading primary map: $mbtilesPath", e)
+                    }
+                }
+            }
+
             serverSocket = ServerSocket(port)
             isRunning = true
             serverStarted = true
@@ -127,26 +160,38 @@ class LocalTileServer(val mbtilesPath: String) {
 
     private fun getTile(z: Int, x: Int, y: Int): ByteArray? {
         Log.d(TAG, "SQL_TILE_QUERY z=$z x=$x y=$y")
-        db?.let { database ->
-            var tileData: ByteArray? = null
-            try {
-                val cursor = database.rawQuery(
-                    "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
-                    arrayOf(z.toString(), x.toString(), y.toString())
-                )
-                if (cursor.moveToFirst()) {
-                    tileData = cursor.getBlob(0)
-                    Log.d(TAG, "TILE_FOUND size=${tileData.size}")
-                } else {
-                    Log.d(TAG, "TILE_NOT_FOUND")
-                }
-                cursor.close()
-            } catch (e: Exception) {
-                Log.d(TAG, "TILE_NOT_FOUND error=${e.message}")
-            }
-            return tileData
+        
+        // Define candidate offline map files to search, prioritised by appropriate zoom level
+        val candidates = when (z) {
+            in 0..5 -> listOf("world.mbtiles")
+            in 6..8 -> listOf("china.mbtiles", "world.mbtiles")
+            in 9..11 -> listOf("liaoning.mbtiles", "china.mbtiles", "world.mbtiles")
+            else -> listOf("dandong.mbtiles", "liaoning.mbtiles", "china.mbtiles", "world.mbtiles")
         }
-        Log.d(TAG, "TILE_NOT_FOUND db_null")
+
+        for (fileName in candidates) {
+            val database = dbsMap[fileName]
+            if (database != null && database.isOpen) {
+                var tileData: ByteArray? = null
+                try {
+                    val cursor = database.rawQuery(
+                        "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                        arrayOf(z.toString(), x.toString(), y.toString())
+                    )
+                    if (cursor.moveToFirst()) {
+                        tileData = cursor.getBlob(0)
+                        Log.i(TAG, "TILE_FOUND in $fileName (size=${tileData.size}) for z=$z x=$x y=$y")
+                    }
+                    cursor.close()
+                    if (tileData != null) {
+                        return tileData
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Query error in $fileName for z=$z: ${e.message}")
+                }
+            }
+        }
+        Log.d(TAG, "TILE_NOT_FOUND in any loaded MBTiles database")
         return null
     }
 
@@ -173,8 +218,18 @@ class LocalTileServer(val mbtilesPath: String) {
         try {
             serverSocket?.close()
         } catch (e: Exception) {}
-        try {
-            db?.close()
-        } catch (e: Exception) {}
+        
+        // Close all mapped database connections safely
+        for ((name, database) in dbsMap) {
+            try {
+                if (database.isOpen) {
+                    database.close()
+                    Log.i(TAG, "MultiMapManager: Closed database: $name")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed closing database $name", e)
+            }
+        }
+        dbsMap.clear()
     }
 }
