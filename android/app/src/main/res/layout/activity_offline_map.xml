@@ -4,164 +4,88 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#f8f4f0">
+    android:background="#F5F5F5">
 
+    <!-- Header Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="#4CAF50"
+        android:background="#2E7D32"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
 
-    <ScrollView
+    <!-- Breadcrumb and Navigation Header Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_breadcrumbs"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        android:layout_margin="10dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp"
+        app:cardBackgroundColor="#E8F5E9">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp">
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
 
-            <!-- Section 1: Map Packages -->
-            <TextView
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                android:text="1. 离线地图影像包管理器 (存储路径: /CyberTrail/Maps/)"
-                android:textStyle="bold"
-                android:textColor="#333333"
-                android:textSize="16sp" />
+                android:orientation="vertical"
+                android:layout_weight="1">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false"
-                android:clipToPadding="false" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="2dp"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp"
-                android:background="#DDDDDD" />
-
-            <!-- Section 2: DEM Packages -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                android:text="2. DEM 高程数据下载与导入管理 (存储路径: /CyberTrail/DEM/)"
-                android:textStyle="bold"
-                android:textColor="#333333"
-                android:textSize="16sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
-                android:layout_marginBottom="8dp"
-                android:text="支持自动下载或导入设备中的外部 .hgt, .bil, .tif 物理高程文件。未加载时，坡度、坡向显示 N/A。"
-                android:textColor="#777777"
-                android:textSize="12sp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerViewDems"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false"
-                android:clipToPadding="false" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="2dp"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp"
-                android:background="#DDDDDD" />
-
-            <!-- Section 3: Help Center -->
-            <androidx.cardview.widget.CardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                app:cardCornerRadius="8dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="#FFFFFF">
-
-                <LinearLayout
+                <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:text="🗺️ 导航面包屑路径"
+                    android:textSize="11sp"
+                    android:textColor="#2E7D32"
+                    android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="💡 帮助中心：如何获取离线地图及 DEM 数据"
-                        android:textStyle="bold"
-                        android:textColor="#388E3C"
-                        android:textSize="15sp" />
+                <TextView
+                    android:id="@+id/tv_breadcrumbs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="📍 首页"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="🌐 1. 离线地图数据源建议 (MBTiles格式)"
-                        android:textStyle="bold"
-                        android:textColor="#333333"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="• OpenStreetMap 矢量数据源\n• OpenMapTiles.org (提取并定制各级地图瓦片)\n• Geofabrik.de (按大洲/国家分割下载历史数据)\n• BBBike (按坐标选择并在后台渲染提取)\n• MapTiler / OpenAerialMap (支持遥感影像拼图与导出)\n• 本系统支持将任何标准的 .mbtiles 包导入 Maps 目录中使用。"
-                        android:textColor="#555555"
-                        android:textSize="12sp"
-                        android:lineSpacingMultiplier="1.2" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="🏔️ 2. 数字高程模型数据源建议 (DEM网格)"
-                        android:textStyle="bold"
-                        android:textColor="#333333"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="• NASA SRTM (最经典的 30 米全球雷达高程数据源)\n• ASTER GDEM (高精度全球地形，支持 1角秒 弧秒精密度)\n• Copernicus Global DEM (由欧洲空间局提供，质量极佳)\n• 导入方法：获取以上机构的 .hgt, .tif, .bil, .img 文件，重命名或直接放入 /CyberTrail/DEM 文件夹，或在本界面直接点击 [导入本地] 来自动识别。"
-                        android:textColor="#555555"
-                        android:textSize="12sp"
-                        android:lineSpacingMultiplier="1.2" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="🛠️ 3. 开源地图数据来源 (官方链接建议)"
-                        android:textStyle="bold"
-                        android:textColor="#333333"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="• OpenStreetMap 官方主页: https://www.openstreetmap.org\n• OpenMapTiles 矢量切片定制: https://openmaptiles.org\n• MapTiler 离线地图与配图服务: https://www.maptiler.com\n• GeoFabrik 历史/分国切片数据: https://www.geofabrik.de\n• NASA Earthdata (SRTM 30m 高程): https://earthdata.nasa.gov\n• ASTER GDEM 高精密高程来源: https://asterweb.jpl.nasa.gov"
-                        android:textColor="#455A64"
-                        android:textSize="12sp"
-                        android:lineSpacingMultiplier="1.2" />
-
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
-
+            <!-- Navigate Up action -->
+            <Button
+                android:id="@+id/btn_navigate_up"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:backgroundTint="#388E3C"
+                android:textColor="#FFFFFF"
+                android:text="⬅️ 返回上级"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:visibility="gone" />
         </LinearLayout>
-    </ScrollView>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Main Navigation Content Scroll Area -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp" />
+
+    <!-- Backward compatibility items (kept invisible so code targeting them won't throw exceptions, but not used visually) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewDems"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 
 </LinearLayout>
