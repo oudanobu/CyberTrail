@@ -303,7 +303,7 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
 
         val btnRename = Button(context).apply {
             text = "🖊️ 重命名"
-            textSize = 11sp
+            textSize = 11f
             setTextColor(Color.WHITE)
             backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#546E7A"))
             layoutParams = LinearLayout.LayoutParams(0, (36 * resources.displayMetrics.density).toInt(), 1f).apply {
@@ -316,7 +316,7 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
 
         val btnDelete = Button(context).apply {
             text = "❌ 物理删除"
-            textSize = 11sp
+            textSize = 11f
             setTextColor(Color.WHITE)
             backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#C62828"))
             layoutParams = LinearLayout.LayoutParams(0, (36 * resources.displayMetrics.density).toInt(), 1f)
