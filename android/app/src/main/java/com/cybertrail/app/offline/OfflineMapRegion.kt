@@ -15,6 +15,8 @@ data class OfflineMapRegion(
     var downloadId: Long = -1L,
     var category: String = "一级行政区",
     var minZoom: Int = 0,
-    var maxZoom: Int = 22
+    var maxZoom: Int = 22,
+    var parentName: String? = null,
+    var directoryName: String? = null
 )
 

@@ -50,6 +50,117 @@ class OfflineMapManager(private val context: Context) {
         }
     }
 
+    fun getPresetDirectoryInfo(id: String): Triple<String, String, String?> {
+        return when (id.lowercase()) {
+            "world" -> Triple("世界", "世界", null)
+            "asia" -> Triple("大洲", "亚洲", "世界")
+            "europe" -> Triple("大洲", "欧洲", "世界")
+            "north_america" -> Triple("大洲", "北美洲", "世界")
+            "south_america" -> Triple("大洲", "南美洲", "世界")
+            "africa" -> Triple("大洲", "非洲", "世界")
+            "oceania" -> Triple("大洲", "大洋洲", "世界")
+            "antarctica" -> Triple("大洲", "南极洲", "世界")
+            "china" -> Triple("国家", "中国", "亚洲")
+            "japan" -> Triple("国家", "日本", "亚洲")
+            "korea" -> Triple("国家", "韩国", "亚洲")
+            "usa" -> Triple("国家", "美国", "北美洲")
+            "canada" -> Triple("国家", "加拿大", "北美洲")
+            "germany" -> Triple("国家", "德国", "欧洲")
+            "france" -> Triple("国家", "法国", "欧洲")
+            "uk" -> Triple("国家", "英国", "欧洲")
+            "australia" -> Triple("国家", "澳大利亚", "大洋洲")
+            "liaoning" -> Triple("一级行政区", "辽宁", "中国")
+            "tokyo" -> Triple("一级行政区", "东京都", "日本")
+            "hokkaido" -> Triple("一级行政区", "北海道", "日本")
+            "california" -> Triple("一级行政区", "加州", "美国")
+            "bavaria" -> Triple("一级行政区", "巴伐利亚", "德国")
+            "dandong" -> Triple("二级行政区", "丹东", "辽宁")
+            "sapporo" -> Triple("二级行政区", "札幌", "北海道")
+            "los_angeles" -> Triple("二级行政区", "洛杉矶", "加州")
+            "shinjuku" -> Triple("三级行政区", "新宿", "东京都")
+            "mount_fuji" -> Triple("三级行政区", "富士山", "东京都")
+            "mount_everest" -> Triple("三级行政区", "珠峰", "中国")
+            else -> Triple("一级行政区", id, "中国")
+        }
+    }
+
+    fun getCustomMapsJsonFile(): File {
+        return File(baseDir, "custom_maps.json")
+    }
+
+    fun saveCustomMapMeta(id: String, name: String, category: String, parentName: String, directoryName: String) {
+        try {
+            val file = getCustomMapsJsonFile()
+            val jsonArray = if (file.exists()) {
+                try {
+                    org.json.JSONArray(file.readText())
+                } catch (e: Exception) {
+                    org.json.JSONArray()
+                }
+            } else {
+                org.json.JSONArray()
+            }
+
+            var found = false
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                if (obj.getString("id").lowercase() == id.lowercase()) {
+                    obj.put("name", name)
+                    obj.put("category", category)
+                    obj.put("parentName", parentName)
+                    obj.put("directoryName", directoryName)
+                    found = true
+                    break
+                }
+            }
+            if (!found) {
+                val obj = org.json.JSONObject()
+                obj.put("id", id)
+                obj.put("name", name)
+                obj.put("category", category)
+                obj.put("parentName", parentName)
+                obj.put("directoryName", directoryName)
+                jsonArray.put(obj)
+            }
+            file.writeText(jsonArray.toString(2))
+            Log.d(TAG, "Saved custom map meta successfully for $id")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save custom map meta", e)
+        }
+    }
+
+    private data class CustomMapMeta(
+        val id: String,
+        val name: String,
+        val category: String,
+        val parentName: String,
+        val directoryName: String
+    )
+
+    private fun loadCustomMapsMeta(): Map<String, CustomMapMeta> {
+        val result = mutableMapOf<String, CustomMapMeta>()
+        try {
+            val file = getCustomMapsJsonFile()
+            if (file.exists()) {
+                val jsonArray = org.json.JSONArray(file.readText())
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    val id = obj.getString("id")
+                    result[id.lowercase()] = CustomMapMeta(
+                        id = id,
+                        name = obj.getString("name"),
+                        category = obj.getString("category"),
+                        parentName = obj.optString("parentName", "中国"),
+                        directoryName = obj.optString("directoryName", id)
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load custom maps meta", e)
+        }
+        return result
+    }
+
     fun getAvailableRegions(): List<OfflineMapRegion> {
         val presetMaps = mutableListOf<OfflineMapRegion>()
         try {
@@ -59,18 +170,22 @@ class OfflineMapManager(private val context: Context) {
             val jsonArray = org.json.JSONArray(jsonString)
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
+                val id = obj.getString("id")
+                val (lvl, dir, parent) = getPresetDirectoryInfo(id)
                 presetMaps.add(
                     OfflineMapRegion(
-                        id = obj.getString("id"),
+                        id = id,
                         name = obj.getString("name"),
                         mbtilesUrl = obj.optString("mbtilesUrl", null),
                         demUrl = obj.optString("demUrl", null),
                         expectedSizeBytes = obj.optLong("expectedSizeBytes", 0L),
                         tileCount = obj.optInt("tileCount", 0),
                         bounds = obj.optString("bounds", ""),
-                        category = obj.optString("category", "未分类"),
+                        category = obj.optString("category", "一级行政区"),
                         minZoom = obj.optInt("minZoom", 0),
-                        maxZoom = obj.optInt("maxZoom", 22)
+                        maxZoom = obj.optInt("maxZoom", 22),
+                        parentName = parent,
+                        directoryName = dir
                     )
                 )
             }
@@ -80,6 +195,7 @@ class OfflineMapManager(private val context: Context) {
 
         val resultList = mutableListOf<OfflineMapRegion>()
         val processedFiles = mutableSetOf<String>()
+        val customMetaMap = loadCustomMapsMeta()
 
         // 1. Scan physical mapsDir for existing files and classify them!
         try {
@@ -90,7 +206,9 @@ class OfflineMapManager(private val context: Context) {
                     processedFiles.add(nameLower)
                     
                     val metadata = extractMbtilesMetadata(file)
-                    val presetMatch = presetMaps.firstOrNull { it.id.lowercase() == file.nameWithoutExtension.lowercase() }
+                    val id = file.nameWithoutExtension
+                    val presetMatch = presetMaps.firstOrNull { it.id.lowercase() == id.lowercase() }
+                    val customMatch = customMetaMap[id.lowercase()]
                     
                     if (presetMatch != null) {
                         presetMatch.isDownloaded = true
@@ -98,14 +216,42 @@ class OfflineMapManager(private val context: Context) {
                         presetMatch.bounds = if (metadata.bounds.isNotEmpty()) metadata.bounds else presetMatch.bounds
                         presetMatch.minZoom = metadata.minZoom
                         presetMatch.maxZoom = metadata.maxZoom
-                        presetMatch.category = metadata.category
                         resultList.add(presetMatch)
-                    } else {
+                    } else if (customMatch != null) {
                         resultList.add(
                             OfflineMapRegion(
-                                id = file.nameWithoutExtension,
-                                name = "自定义导入 (User Custom): 自动识别 [${metadata.name}]",
-                                mbtilesUrl = "https://openfootprint.org", // default help url
+                                id = id,
+                                name = customMatch.name,
+                                mbtilesUrl = "https://github.com",
+                                demUrl = null,
+                                expectedSizeBytes = file.length(),
+                                tileCount = -1,
+                                bounds = if (metadata.bounds.isNotEmpty()) metadata.bounds else "自动检测范围",
+                                isDownloaded = true,
+                                localPath = file.absolutePath,
+                                category = customMatch.category,
+                                minZoom = metadata.minZoom,
+                                maxZoom = metadata.maxZoom,
+                                parentName = customMatch.parentName,
+                                directoryName = customMatch.directoryName
+                            )
+                        )
+                    } else {
+                        // Fully generic fallback if placed in folder manually
+                        val level = when (metadata.category) {
+                            "地球级" -> "世界"
+                            "大洲级" -> "大洲"
+                            "国家级" -> "国家"
+                            "一级行政区" -> "一级行政区"
+                            "二级行政区" -> "二级行政区"
+                            "三级行政区" -> "三级行政区"
+                            else -> "一级行政区"
+                        }
+                        resultList.add(
+                            OfflineMapRegion(
+                                id = id,
+                                name = "本地导入: ${id}",
+                                mbtilesUrl = "https://github.com",
                                 demUrl = null,
                                 expectedSizeBytes = file.length(),
                                 tileCount = -1,
@@ -114,7 +260,9 @@ class OfflineMapManager(private val context: Context) {
                                 localPath = file.absolutePath,
                                 category = metadata.category,
                                 minZoom = metadata.minZoom,
-                                maxZoom = metadata.maxZoom
+                                maxZoom = metadata.maxZoom,
+                                parentName = "中国",
+                                directoryName = id
                             )
                         )
                     }
@@ -130,6 +278,30 @@ class OfflineMapManager(private val context: Context) {
                 preset.isDownloaded = false
                 preset.localPath = null
                 resultList.add(preset)
+            }
+        }
+
+        // 3. Add custom maps that are in custom_maps.json but not physically present as placeholders
+        customMetaMap.forEach { (id, meta) ->
+            if (!processedFiles.contains("${id}.mbtiles") && !processedFiles.contains(id)) {
+                resultList.add(
+                    OfflineMapRegion(
+                        id = meta.id,
+                        name = meta.name,
+                        mbtilesUrl = "https://github.com",
+                        demUrl = null,
+                        expectedSizeBytes = 0L,
+                        tileCount = 0,
+                        bounds = "自定义未下载地图",
+                        isDownloaded = false,
+                        localPath = null,
+                        category = meta.category,
+                        minZoom = 0,
+                        maxZoom = 16,
+                        parentName = meta.parentName,
+                        directoryName = meta.directoryName
+                    )
+                )
             }
         }
 
@@ -176,7 +348,6 @@ class OfflineMapManager(private val context: Context) {
             db?.close()
         }
 
-        // Category Classification Algorithm
         category = when {
             maxzoom <= 6 -> "地球级"
             maxzoom <= 8 -> "大洲级"
@@ -227,7 +398,6 @@ class OfflineMapManager(private val context: Context) {
     )
 
     fun startDownload(region: OfflineMapRegion): Long {
-        // App is not downloading anymore: we return -1 and trigger Intent page inside Activity
         return -1L
     }
 
@@ -244,42 +414,130 @@ class OfflineMapManager(private val context: Context) {
         region.localPath = null
     }
 
+    fun getCustomDemsJsonFile(): File {
+        return File(baseDir, "custom_dems.json")
+    }
+
+    fun saveCustomDem(name: String, coverage: String, format: String, fileSizeStr: String, githubUrl: String, fileName: String) {
+        try {
+            val file = getCustomDemsJsonFile()
+            val jsonArray = if (file.exists()) {
+                try {
+                    org.json.JSONArray(file.readText())
+                } catch (e: Exception) {
+                    org.json.JSONArray()
+                }
+            } else {
+                org.json.JSONArray()
+            }
+
+            val obj = org.json.JSONObject()
+            obj.put("id", "github_dem_" + System.currentTimeMillis())
+            obj.put("name", name)
+            obj.put("coverage", coverage)
+            obj.put("format", format)
+            obj.put("fileSizeStr", fileSizeStr)
+            obj.put("githubUrl", githubUrl)
+            obj.put("fileName", fileName)
+            jsonArray.put(obj)
+
+            file.writeText(jsonArray.toString(2))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save custom DEM", e)
+        }
+    }
+
+    private data class CustomDemMeta(
+        val id: String,
+        val name: String,
+        val coverage: String,
+        val format: String,
+        val fileSizeStr: String,
+        val githubUrl: String,
+        val fileName: String
+    )
+
+    private fun loadCustomDemsMeta(): List<CustomDemMeta> {
+        val result = mutableListOf<CustomDemMeta>()
+        try {
+            val file = getCustomDemsJsonFile()
+            if (file.exists()) {
+                val jsonArray = org.json.JSONArray(file.readText())
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    result.add(
+                        CustomDemMeta(
+                            id = obj.getString("id"),
+                            name = obj.getString("name"),
+                            coverage = obj.optString("coverage", "全球/自定义区域"),
+                            format = obj.optString("format", "GeoTIFF"),
+                            fileSizeStr = obj.optString("fileSizeStr", "未知大小"),
+                            githubUrl = obj.optString("githubUrl", "https://github.com"),
+                            fileName = obj.optString("fileName", "custom.tif")
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load custom DEMs meta", e)
+        }
+        return result
+    }
+
     fun getAvailableDems(): List<OfflineDemRegion> {
+        // Updated with official ready-to-import resources
         val presetDems = listOf(
             OfflineDemRegion(
-                id = "srtm_hgt",
-                name = "SRTM HGT高程包: 30米分辨率雷达地形测绘数高 (.hgt格式)",
+                id = "world_dem",
+                name = "全球基础 DEM 离线地形高程图 (World DEM)",
+                demUrl = "https://opentopography.org",
+                demType = "GeoTIFF格式 (300米精度)",
+                expectedSizeBytes = 45123456,
+                fileName = "world_dem.tif"
+            ),
+            OfflineDemRegion(
+                id = "japan_dem",
+                name = "日本高精度 DEM 离线地形数模 (Japan DEM)",
+                demUrl = "https://opentopography.org",
+                demType = "GeoTIFF格式 (30米高精密)",
+                expectedSizeBytes = 252720000,
+                fileName = "japan_dem.tif"
+            ),
+            OfflineDemRegion(
+                id = "china_dem",
+                name = "中国全境 DEM 离线地形高程图包 (China DEM)",
+                demUrl = "https://opentopography.org",
+                demType = "GeoTIFF格式 (30米高精密)",
+                expectedSizeBytes = 943000000,
+                fileName = "china_dem.tif"
+            ),
+            OfflineDemRegion(
+                id = "asia_dem",
+                name = "亚太高空雷达 SRTM 地形高程模型 (Asia DEM)",
                 demUrl = "https://earthdata.nasa.gov",
+                demType = "HGT 格式 (30米级雷达测绘)",
+                expectedSizeBytes = 1258000000,
+                fileName = "asia_dem.tif"
+            ),
+            OfflineDemRegion(
+                id = "liaoning_srtm",
+                name = "辽宁局部 SRTM 30米级精细高程雷达芯片 (.hgt格式)",
+                demUrl = "https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/Eurasia/",
                 demType = "SRTM",
                 expectedSizeBytes = 25165824,
                 fileName = "liaoning.hgt"
-            ),
-            OfflineDemRegion(
-                id = "aster_gdem",
-                name = "ASTER GDEM高程包: 全球先进遥感器视差数字高程贴图 (.tif格式)",
-                demUrl = "https://asterweb.jpl.nasa.gov",
-                demType = "ASTER GDEM",
-                expectedSizeBytes = 45123456,
-                fileName = "liaoning_aster.tif"
-            ),
-            OfflineDemRegion(
-                id = "geotiff_dem",
-                name = "GeoTIFF 高精密遥感高程包: 欧空局高对比全球DEM表面剖面 (.tif格式)",
-                demUrl = "https://earth.esa.int",
-                demType = "GeoTIFF",
-                expectedSizeBytes = 32150000,
-                fileName = "liaoning_copernicus.tif"
             )
         )
 
         val finalDems = mutableListOf<OfflineDemRegion>()
         val processedFileNames = mutableSetOf<String>()
 
-        // Scan actual DEMs
+        // Scan actual physical DEMs inside the directory
         try {
             val customFiles = demDir.listFiles { _, name ->
                 name.endsWith(".hgt", ignoreCase = true) ||
                 name.endsWith(".tif", ignoreCase = true) ||
+                name.endsWith(".tiff", ignoreCase = true) ||
                 name.endsWith(".bil", ignoreCase = true) ||
                 name.endsWith(".img", ignoreCase = true)
             }
@@ -298,6 +556,7 @@ class OfflineMapManager(private val context: Context) {
                         val type = when (extension) {
                             "HGT" -> "SRTM"
                             "TIF" -> "ASTER GDEM / GeoTIFF"
+                            "TIFF" -> "GeoTIFF"
                             "BIL" -> "Copernicus DEM"
                             "IMG" -> "ASTER GDEM"
                             else -> "GeoTIFF"
@@ -305,8 +564,8 @@ class OfflineMapManager(private val context: Context) {
                         finalDems.add(
                             OfflineDemRegion(
                                 id = file.nameWithoutExtension,
-                                name = "自定义导入: ${file.name}",
-                                demUrl = "https://earthdata.nasa.gov",
+                                name = "本地导入 DEM: ${file.name}",
+                                demUrl = "https://opentopography.org",
                                 demType = type,
                                 expectedSizeBytes = file.length(),
                                 fileName = file.name,
@@ -321,13 +580,39 @@ class OfflineMapManager(private val context: Context) {
             Log.e(TAG, "Failed scanning custom DEMs", e)
         }
 
-        // Add presets not found as placeholders
+        // Add presets not found on disk as download options
         presetDems.forEach { preset ->
             if (!processedFileNames.contains(preset.fileName.lowercase())) {
                 preset.isDownloaded = false
                 preset.localPath = null
                 finalDems.add(preset)
             }
+        }
+
+        // Add custom-added github or user DEMs from custom_dems.json
+        val customDemsMeta = loadCustomDemsMeta()
+        customDemsMeta.forEach { meta ->
+            val fileNameLower = meta.fileName.lowercase()
+            val isOnDisk = processedFileNames.contains(fileNameLower)
+            
+            // If already processed as a generic local file, let's update it or just add with proper name!
+            if (isOnDisk) {
+                // Remove generic local matching first if exists to avoid duplication
+                finalDems.removeAll { it.fileName.lowercase() == fileNameLower }
+            }
+
+            finalDems.add(
+                OfflineDemRegion(
+                    id = meta.id,
+                    name = "${meta.name} [${meta.coverage}]",
+                    demUrl = meta.githubUrl,
+                    demType = "${meta.format} (${meta.fileSizeStr})",
+                    expectedSizeBytes = if (isOnDisk) File(demDir, meta.fileName).length() else 0L,
+                    fileName = meta.fileName,
+                    isDownloaded = isOnDisk,
+                    localPath = if (isOnDisk) File(demDir, meta.fileName).absolutePath else null
+                )
+            )
         }
 
         return finalDems
@@ -349,5 +634,7 @@ class OfflineMapManager(private val context: Context) {
     fun startDemDownload(dem: OfflineDemRegion): Long {
         return -1L
     }
+
+}
 
 }

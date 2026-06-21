@@ -106,7 +106,7 @@ class OfflineTreeAdapter(
                 holder.layoutActions.visibility = View.VISIBLE
                 
                 // Button 1: Web Link
-                holder.btnOpenPage.text = "打开网页"
+                holder.btnOpenPage.text = "极速下载"
                 holder.btnOpenPage.setOnClickListener { onMapOpenWeb(region) }
 
                 // Button 2: Copy Download Address
@@ -143,12 +143,22 @@ class OfflineTreeAdapter(
                 }
 
                 holder.tvDetails.visibility = View.VISIBLE
-                holder.tvDetails.text = "📁 系统指定命名: ${dem.fileName}\n🛰️ 高精密等高解算芯片: 1角秒三维栅格精度\n🏃‍♂️ 适用: CyberTrail 野外爬升/瞬时坡度/地形高低自动建模"
+                val coverageString = when (dem.id) {
+                    "world_dem" -> "🌍 全球主要大陆架 / 极地无缝覆盖"
+                    "japan_dem" -> "🇯🇵 日本列岛全域 / 包括阿尔卑斯户外核心山体"
+                    "china_dem" -> "🇨🇳 中国内陆版图、周边及边缘海岛陆基范围"
+                    "asia_dem" -> "🌏 亚洲高海拔高山地带、喜马拉雅等密集探险极地"
+                    "liaoning_srtm" -> "📍 中国辽宁省全域及丹东、沈阳等核心山区"
+                    else -> "📍 自定义导入高密覆照网幅"
+                }
+                holder.tvDetails.text = "🛰️ 覆盖区域: %s\n📁 系统指定命名: %s\n⚙️ 格式规格: %s\n🏃‍♂️ 适用: CyberTrail 野外爬升/瞬时坡度/地形高低自动建模".format(
+                    coverageString, dem.fileName, dem.demType
+                )
 
                 holder.layoutActions.visibility = View.VISIBLE
 
                 // Button 1: Web Link
-                holder.btnOpenPage.text = "打开下载页"
+                holder.btnOpenPage.text = "极速下载"
                 holder.btnOpenPage.setOnClickListener { onDemOpenWeb(dem) }
 
                 // Button 2: Copy link

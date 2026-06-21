@@ -157,13 +157,7 @@ class OfflineMapActivity : AppCompatActivity() {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText(label, text)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "🚀 $label 极速下载连接已成功复制到剪贴板！", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "剪贴板拒绝访问: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun renderCurrentPath() {
+            Toast.makeText(this, "🚀 $label 极速下载连接已成功复制到�    private fun renderCurrentPath() {
         // Refresh available items from manager
         regions = mapManager.getAvailableRegions()
         dems = mapManager.getAvailableDems()
@@ -176,12 +170,11 @@ class OfflineMapActivity : AppCompatActivity() {
             btnNavigateUp.visibility = View.GONE
 
             // Categories list
-            items.add(OfflineTreeItem.Folder("🌍 地球级：全球高亮底图与简易越野覆盖", "🌍", "点击下钻全球基础低分辨率MBTiles离线大图", listOf("地球级")))
-            items.add(OfflineTreeItem.Folder("🌏 大洲级：区域山脉骑行/徒步混合网格", "🌏", "包含亚洲、欧洲、北美洲、南美洲、非洲、大洋洲等", listOf("大洲级")))
-            items.add(OfflineTreeItem.Folder("🗾 国家级及省市行政行政细分瓦片", "🗾", "精细等高高线层级：中国、日本、美国、德国各省市及徒步特区", listOf("国家级")))
-            items.add(OfflineTreeItem.Folder("🏔 离线地形：DEM高程数模立体控制核心", "🏔", "SRTM HGT 30m、ASTER Tif高阶数据，支持导入本地自定义地形", listOf("DEM数据")))
-            items.add(OfflineTreeItem.Folder("📚 离线高频数据下载源与使用姿势指南", "📚", "提供NASA雷达测绘、ASTER、Copernicus和GitHub镜像直接连接", listOf("使用手册")))
-            items.add(OfflineTreeItem.Folder("⚙ 物理数据目录诊断机自我检测", "⚙", "快捷扫描Maps和DEM文件后缀名与元数据校验，发现格式损坏", listOf("诊断系统")))
+            items.add(OfflineTreeItem.Folder("🗺️ 离线地图树状分类浏览器 (按世界->大洲->国家层级下钻)", "🌍", "点击展开树形浏览器配置各层级瓦片包", listOf("世界")))
+            items.add(OfflineTreeItem.Folder("🏔️ DEM 地形高程数据资源中心", "🏔️", "SRTM HGT 30m、ASTER Tif高阶数据，支持添加自定义 GitHub 地形", listOf("DEM数据")))
+            items.add(OfflineTreeItem.Folder("📚 离线高频数据下载源与使用姿势指南", "📚", "提供官方离线包、雷达测绘、ASTER和GitHub镜像下载指南", listOf("使用手册")))
+            items.add(OfflineTreeItem.Folder("🛠️ 开发者模式：专业地图转换链与规则源码", "🛠️", "OSM源码、Planetiler编译规则、Joerd高程栅格转换工具及GPKG/SHP底座", listOf("开发者模式")))
+            items.add(OfflineTreeItem.Folder("⚙️ 物理数据目录诊断机自我检测", "⚙️", "极速检索Maps和DEM数据目录名及物理数据结构完整性", listOf("诊断系统")))
         } else {
             btnNavigateUp.visibility = View.VISIBLE
             val depthName = navStack.joinToString(" > ")
@@ -189,73 +182,47 @@ class OfflineMapActivity : AppCompatActivity() {
 
             val level = navStack[0]
             when (level) {
-                "地球级" -> {
-                    regions.filter { it.category == "地球级" }.forEach {
-                        items.add(OfflineTreeItem.MapFile(it))
+                "世界" -> {
+                    val currentDir = navStack.last()
+
+                    // 1. Add active parent collapsible headers
+                    for (i in 0 until navStack.size) {
+                        val pathDir = navStack[i]
+                        val displayLabel = if (i == 0) "世界" else "▼ $pathDir"
+                        items.add(
+                            OfflineTreeItem.Folder(
+                                name = displayLabel,
+                                icon = "📁",
+                                details = "已展开/点击回到 $pathDir 目录下",
+                                targetPath = navStack.subList(0, i + 1).toList()
+                            )
+                        )
                     }
-                }
-                "大洲级" -> {
-                    regions.filter { it.category == "大洲级" }.forEach {
-                        items.add(OfflineTreeItem.MapFile(it))
+
+                    // 2. Discover children directory names dynamically under the current directory
+                    val childDirs = mutableSetOf<String>()
+                    regions.forEach { region ->
+                        if (region.parentName?.lowercase() == currentDir.lowercase()) {
+                            region.directoryName?.let { childDirs.add(it) }
+                        }
                     }
-                }
-                "国家级" -> {
-                    if (navStack.size == 1) {
-                        // Country Root Folder level
-                        items.add(OfflineTreeItem.Folder("📁 中国 (China) 省市详细高线特区", "📁", "可深入钻取：辽宁山脉自驾精细瓦片、丹东遥感等", listOf("国家级", "中国")))
-                        regions.find { it.id == "china" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
 
-                        items.add(OfflineTreeItem.Folder("📁 日本 (Japan) 县府精细骑行极图", "📁", "可深入钻取：东京都关东片区、北海道雪线自驾、新宿、富士山等", listOf("国家级", "日本")))
-                        regions.find { it.id == "japan" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
+                    childDirs.sorted().forEach { childDir ->
+                        val subPath = ArrayList(navStack)
+                        subPath.add(childDir)
+                        items.add(
+                            OfflineTreeItem.Folder(
+                                name = "▶ $childDir",
+                                icon = "📁",
+                                details = "下钻/展开 $childDir 各子区划与地图包",
+                                targetPath = subPath
+                            )
+                        )
+                    }
 
-                        items.add(OfflineTreeItem.Folder("📁 美国 (USA) 各州国家公园细化层", "📁", "可深入钻取：加利福尼亚野径及露营地、洛杉矶越野等", listOf("国家级", "美国")))
-                        regions.find { it.id == "usa" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-
-                        items.add(OfflineTreeItem.Folder("📁 德国 (Germany) 联邦阿尔卑斯山区", "📁", "可深入钻取：巴伐利亚深林古堡与徒步、高密度等高", listOf("国家级", "德国")))
-                        regions.find { it.id == "germany" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-
-                        // Standalone country packages with no sub-folders declared
-                        regions.filter { it.category == "国家级" && it.id !in listOf("china", "japan", "usa", "germany") }.forEach {
-                            items.add(OfflineTreeItem.MapFile(it))
-                        }
-                    } else if (navStack.size == 2) {
-                        val country = navStack[1]
-                        when (country) {
-                            "中国" -> {
-                                regions.find { it.id == "liaoning" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                                items.add(OfflineTreeItem.Folder("📁 辽宁省 (Liaoning) 省内二级市级瓦片", "📁", "可钻取：丹东高精度卫星影像及徒步网格", listOf("国家级", "中国", "辽宁")))
-                            }
-                            "日本" -> {
-                                regions.find { it.id == "tokyo" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                                regions.find { it.id == "hokkaido" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                                items.add(OfflineTreeItem.Folder("📁 东京都特区细划、徒步登山线", "📁", "可下钻：新宿骑行越野图、富士山等高攀登", listOf("国家级", "日本", "东京都")))
-                                items.add(OfflineTreeItem.Folder("📁 北海道二级市府与滑雪特指线", "📁", "可下钻：札幌雪道越野与自驾", listOf("国家级", "日本", "北海道")))
-                            }
-                            "美国" -> {
-                                regions.find { it.id == "california" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                                items.add(OfflineTreeItem.Folder("📁 加利福尼亚县级行政区划细节", "📁", "可钻取：洛杉矶县野外自驾探险骑行地图", listOf("国家级", "美国", "加州")))
-                            }
-                            "德国" -> {
-                                regions.find { it.id == "bavaria" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                            }
-                        }
-                    } else if (navStack.size == 3) {
-                        val subCategory = navStack[2]
-                        when (subCategory) {
-                            "辽宁" -> {
-                                regions.find { it.id == "dandong" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                            }
-                            "东京都" -> {
-                                regions.find { it.id == "shinjuku" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                                regions.find { it.id == "mount_fuji" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                            }
-                            "北海道" -> {
-                                regions.find { it.id == "sapporo" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                            }
-                            "加州" -> {
-                                regions.find { it.id == "los_angeles" }?.let { items.add(OfflineTreeItem.MapFile(it)) }
-                            }
-                        }
+                    // 3. Add actual map files within this directory
+                    regions.filter { it.directoryName?.lowercase() == currentDir.lowercase() }.forEach { region ->
+                        items.add(OfflineTreeItem.MapFile(region))
                     }
                 }
                 "DEM数据" -> {
@@ -264,7 +231,6 @@ class OfflineMapActivity : AppCompatActivity() {
                     }
                 }
                 "使用手册" -> {
-                    // Populate educational manuals with beautiful content
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 NASA SRTM 30m Global DEM",
                         "来自美国太空局/地质局雷达测绘计划 (.hgt 格式)",
@@ -298,8 +264,41 @@ class OfflineMapActivity : AppCompatActivity() {
                         "https://github.com/geofabrik/openstreetmap-mbtiles-generator"
                     ))
                 }
+                "开发者模式" -> {
+                    items.add(OfflineTreeItem.HelpManual(
+                        "💻 OSM 原始路网与多格式 PBF 抽取源",
+                        "OpenStreetMap 原生 XML/PBF 数据转换链路",
+                        "• 简评：包含了全球最完整的地理数据标记和拓扑网。\n• 配适：通过 Osmosis 过滤或 Planetiler 构建，可极限压缩生成户外精简 MBTiles。\n• 功能：可极大缩减大洲级数据，抽取出专门的等高线、森林、越野跑点图层。",
+                        "https://openstreetmap.org",
+                        "https://download.geofabrik.de",
+                        "https://github.com/openstreetmap/osmosis"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "💻 Planetiler 高并发多线程矢量编译引擎 (OSM 源码编译)",
+                        "基于 Java 的十亿级矢量切片生成器",
+                        "• 简评：在数十核高配置服务器下，仅数十分钟即可转化 100GB 级的原始全球 .pbf 文件。\n• 构建规则：用户自行载入 schema-mapping、自定义户外样式图层配置。\n• 注意：对内存和磁盘IO要求较高，通过它能零误差打包输出标准的 .mbtiles 并由 CyberTrail 瞬间加载！",
+                        "https://github.com/onthegomap/planetiler",
+                        "https://github.com/onthegomap/planetiler/releases",
+                        "https://github.com/onthegomap/planetiler"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "💻 ESRI Shapefile (.shp) 与 GeoPackage (.gpkg) 底座转换",
+                        "专业级地理空间多图层矢量数据容器",
+                        "• 简评：传统 GIS 软件产出的要素和多图层几何集合。\n• 转换机制：在宿主机端通过 `ogr2ogr` 或是 python `geopandas` 打包成 MVT 瓦片数据库。\n• 说明：这是底层地图学专家生产定制路线必经的离线化流程，转化出的 mbtiles 契合 CyberTrail 加载。",
+                        "https://gdal.org",
+                        "https://gdal.org/programs/ogr2ogr.html",
+                        "https://github.com/OSGeo/gdal"
+                    ))
+                    items.add(OfflineTreeItem.HelpManual(
+                        "💻 Joerd Terrain 自动化高程解算转换套件",
+                        "AWS Mapzen 地形瓦片与世界各地高密散碎高程的拼接工具",
+                        "• 简评：基于 Python 编写的全球 DEM 合并拼接开源套件。\n• 配适：自适应瓦片地形合并。能够把零散的 HGT 片段自动化拼接，并通过 GDAL 转换为 2.5D 高密度图纸，完美提供三维地形建模基座。",
+                        "https://github.com/tilezen/joerd",
+                        "https://github.com/tilezen/joerd/archive/refs/heads/master.zip",
+                        "https://github.com/tilezen/joerd"
+                    ))
+                }
                 "诊断系统" -> {
-                    // Navigate to diagnostics and reset path so it pops elegantly
                     navStack.clear()
                     startActivity(Intent(this, OfflineDiagnosticActivity::class.java))
                     renderCurrentPath()
@@ -309,6 +308,252 @@ class OfflineMapActivity : AppCompatActivity() {
         }
 
         treeAdapter.updateData(items)
+    }
+
+    private fun showCustomImportDialog(sourceUri: Uri, originalFileName: String) {
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+        builder.setTitle("📥 配置并导入自定义离线地图")
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val tvName = android.widget.TextView(this).apply {
+            text = "地图/文件显示名称:"
+            textSize = 14f
+            setPadding(0, 0, 0, (6 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvName)
+
+        val etName = android.widget.EditText(this).apply {
+            val baseName = originalFileName.substringBeforeLast(".")
+            setText(baseName)
+            hint = "例如: Japan Hiking Map"
+        }
+        container.addView(etName)
+
+        val tvLevel = android.widget.TextView(this).apply {
+            text = "所属地图层级:"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvLevel)
+
+        val spinnerLevel = android.widget.Spinner(this)
+        val levelsList = listOf("世界", "大洲", "国家", "一级行政区", "二级行政区", "三级行政区")
+        val levelAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, levelsList).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinnerLevel.adapter = levelAdapter
+        
+        var defaultLevelSelection = 3
+        if (navStack.isNotEmpty()) {
+            val levelIndex = navStack.size
+            if (levelIndex in 1..5) {
+                defaultLevelSelection = levelIndex
+            }
+        }
+        spinnerLevel.setSelection(defaultLevelSelection)
+        container.addView(spinnerLevel)
+
+        val tvParent = android.widget.TextView(this).apply {
+            text = "所属父级节点名称 (请务必在对应父级树下列出):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvParent)
+
+        val etParent = android.widget.EditText(this).apply {
+            if (navStack.isNotEmpty()) {
+                setText(navStack.last())
+            } else {
+                setText("世界")
+            }
+            hint = "例如: 亚洲 或 中国 或 辽宁"
+        }
+        container.addView(etParent)
+
+        val tvDir = android.widget.TextView(this).apply {
+            text = "关联树目录名 (或代表的国家/省份名称):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvDir)
+
+        val etDir = android.widget.EditText(this).apply {
+            val baseName = originalFileName.substringBeforeLast(".")
+            setText(baseName)
+            hint = "留空则默和显示名称一致"
+        }
+        container.addView(etDir)
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(container)
+        }
+        builder.setView(scrollView)
+
+        builder.setPositiveButton("开始导入") { dialog, _ ->
+            val name = etName.text.toString().trim()
+            val level = spinnerLevel.selectedItem.toString()
+            val parent = etParent.text.toString().trim()
+            var dirName = etDir.text.toString().trim()
+
+            if (name.isEmpty()) {
+                Toast.makeText(this, "地图名称不能为空", Toast.LENGTH_SHORT).show()
+                return@setPositiveButton
+            }
+            if (dirName.isEmpty()) {
+                dirName = name
+            }
+
+            val category = when (level) {
+                "世界" -> "地球级"
+                "大洲" -> "大洲级"
+                "国家" -> "国家级"
+                "一级行政区" -> "一级行政区"
+                "二级行政区" -> "二级行政区"
+                "三级行政区" -> "三级行政区"
+                else -> "一级行政区"
+            }
+
+            val id = originalFileName.substringBeforeLast(".").lowercase().replace(" ", "_").replace("-", "_")
+            val destFileName = "$id.mbtiles"
+
+            mapManager.saveCustomMapMeta(id, name, category, parent, dirName)
+            importMapFile(sourceUri, destFileName) {
+                renderCurrentPath()
+            }
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("取消") { dialog, _ ->
+            dialog.dismiss()
+        }
+
+        builder.show()
+    }
+
+    private fun showCustomDemDialog() {
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+        builder.setTitle("🏔️ 添加自定义 DEM 高程资源")
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val tvName = android.widget.TextView(this).apply {
+            text = "高程资源名称:"
+            textSize = 14f
+            setPadding(0, 0, 0, (6 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvName)
+
+        val etName = android.widget.EditText(this).apply {
+            hint = "例如: Norway High-Precision DEM"
+        }
+        container.addView(etName)
+
+        val tvCoverage = android.widget.TextView(this).apply {
+            text = "覆盖地形范围:"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvCoverage)
+
+        val etCoverage = android.widget.EditText(this).apply {
+            hint = "例如: 挪威全境 / 30米分辨率"
+        }
+        container.addView(etCoverage)
+
+        val tvFormat = android.widget.TextView(this).apply {
+            text = "高程数据格式:"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvFormat)
+
+        val spinnerFormat = android.widget.Spinner(this)
+        val formatsList = listOf("GeoTIFF (.tif)", "GeoTIFF (.tiff)", "SRTM (.hgt)", "Copernicus (.bil)")
+        val formatAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, formatsList).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinnerFormat.adapter = formatAdapter
+        container.addView(spinnerFormat)
+
+        val tvSize = android.widget.TextView(this).apply {
+            text = "文件大小估计 (如: 120MB):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvSize)
+
+        val etSize = android.widget.EditText(this).apply {
+            hint = "例如: 240 MB"
+        }
+        container.addView(etSize)
+
+        val tvUrl = android.widget.TextView(this).apply {
+            text = "网页/GitHub Release 下载绝对地址:"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvUrl)
+
+        val etUrl = android.widget.EditText(this).apply {
+            hint = "https://github.com/osm-no/dem/releases"
+        }
+        container.addView(etUrl)
+
+        val tvFileName = android.widget.TextView(this).apply {
+            text = "指定系统保存文件名 (扩展名与高程文件严格配对):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvFileName)
+
+        val etFileName = android.widget.EditText(this).apply {
+            hint = "例如: norway_dem.tif"
+        }
+        container.addView(etFileName)
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(container)
+        }
+        builder.setView(scrollView)
+
+        builder.setPositiveButton("新增配置") { dialog, _ ->
+            val name = etName.text.toString().trim()
+            val coverage = etCoverage.text.toString().trim()
+            val formatText = spinnerFormat.selectedItem.toString()
+            val format = formatText.substringBefore(" (")
+            val sizeStr = etSize.text.toString().trim()
+            val url = etUrl.text.toString().trim()
+            var fileName = etFileName.text.toString().trim()
+
+            if (name.isEmpty() || url.isEmpty()) {
+                Toast.makeText(this, "显示名称和下载页链接必填", Toast.LENGTH_SHORT).show()
+                return@setPositiveButton
+            }
+            if (fileName.isEmpty()) {
+                val ext = if (formatText.contains(".tif")) "tif" else if (formatText.contains(".tiff")) "tiff" else if (formatText.contains(".hgt")) "hgt" else "bil"
+                fileName = "custom_dem_${System.currentTimeMillis()}.$ext"
+            }
+
+            mapManager.saveCustomDem(name, coverage, format, sizeStr, url, fileName)
+            renderCurrentPath()
+            dialog.dismiss()
+            Toast.makeText(this, "🏔️ 自定义 DEM 数据源新增成功!", Toast.LENGTH_SHORT).show()
+        }
+
+        builder.setNegativeButton("取消") { dialog, _ ->
+            dialog.dismiss()
+        }
+
+        builder.show()
     }
 
     private fun launchFilePickerDem(dem: OfflineDemRegion) {
@@ -336,21 +581,23 @@ class OfflineMapActivity : AppCompatActivity() {
             val uri = data?.data
             val targetDem = pendingImportDem
             if (uri != null && targetDem != null) {
-                importDemFile(uri, targetDem.fileName)
-                renderCurrentPath()
+                importDemFile(uri, targetDem.fileName) {
+                    renderCurrentPath()
+                }
             }
         } else if (requestCode == IMPORT_MAP_REQUEST_CODE && resultCode == RESULT_OK) {
             val uri = data?.data
             val targetMap = pendingImportMap
             if (uri != null) {
                 val originalName = getUriFileName(this, uri) ?: "imported_map_${System.currentTimeMillis()}.mbtiles"
-                val finalName = if (targetMap != null) {
-                    "${targetMap.id}.mbtiles"
+                if (targetMap != null) {
+                    val finalName = "${targetMap.id}.mbtiles"
+                    importMapFile(uri, finalName) {
+                        renderCurrentPath()
+                    }
                 } else {
-                    originalName
+                    showCustomImportDialog(uri, originalName)
                 }
-                importMapFile(uri, finalName)
-                renderCurrentPath()
             }
         }
     }
@@ -378,7 +625,7 @@ class OfflineMapActivity : AppCompatActivity() {
         return result
     }
 
-    private fun importDemFile(sourceUri: Uri, destFileName: String) {
+    private fun importDemFile(sourceUri: Uri, destFileName: String, onComplete: () -> Unit) {
         val destFile = File(mapManager.demDir, destFileName)
         try {
             contentResolver.openInputStream(sourceUri).use { inputStream ->
@@ -391,6 +638,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     
                     val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
                     sendBroadcast(completeIntent)
+                    onComplete()
                 } else {
                     Log.e("MAP_DEBUG", "ImportFailed: opening Stream for DEM $destFileName failed")
                     Toast.makeText(this, "打开高程源文件失败", Toast.LENGTH_SHORT).show()
@@ -403,7 +651,7 @@ class OfflineMapActivity : AppCompatActivity() {
         }
     }
 
-    private fun importMapFile(sourceUri: Uri, destFileName: String) {
+    private fun importMapFile(sourceUri: Uri, destFileName: String, onComplete: () -> Unit) {
         val destFile = File(mapManager.mapsDir, destFileName)
         try {
             contentResolver.openInputStream(sourceUri).use { inputStream ->
@@ -416,6 +664,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     
                     val completeIntent = Intent("com.cybertrail.app.MAP_DOWNLOAD_COMPLETED")
                     sendBroadcast(completeIntent)
+                    onComplete()
                 } else {
                     Log.e("MAP_DEBUG", "ImportFailed: opening Stream for Map $destFileName failed")
                     Toast.makeText(this, "打开地图源文件失败", Toast.LENGTH_SHORT).show()
@@ -434,18 +683,26 @@ class OfflineMapActivity : AppCompatActivity() {
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, 1001, 1, "导入任意离线地图").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
-        menu.add(0, 1002, 2, "数据诊断系统").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        menu.add(0, 1001, 1, "➕ 导入自定义地图").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        menu.add(0, 1003, 2, "➕ 新增自定义 DEM").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        menu.add(0, 1002, 3, "🔍 极速诊断系统").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == 1001) {
-            launchFilePickerMap(null)
-            return true
-        } else if (item.itemId == 1002) {
-            startActivity(Intent(this, OfflineDiagnosticActivity::class.java))
-            return true
+        when (item.itemId) {
+            1001 -> {
+                launchFilePickerMap(null)
+                return true
+            }
+            1003 -> {
+                showCustomDemDialog()
+                return true
+            }
+            1002 -> {
+                startActivity(Intent(this, OfflineDiagnosticActivity::class.java))
+                return true
+            }
         }
         return super.onOptionsItemSelected(item)
     }
