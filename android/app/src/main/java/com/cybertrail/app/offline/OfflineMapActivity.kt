@@ -233,8 +233,46 @@ class OfflineMapActivity : AppCompatActivity() {
                     }
                 }
                 "DEM数据" -> {
-                    dems.forEach {
-                        items.add(OfflineTreeItem.DemFile(it))
+                    val currentDir = navStack.last()
+
+                    // 1. Add active parent collapsible headers
+                    for (i in 0 until navStack.size) {
+                        val pathDir = navStack[i]
+                        val displayLabel = if (i == 0) "DEM数据" else "▼ $pathDir"
+                        items.add(
+                            OfflineTreeItem.Folder(
+                                name = displayLabel,
+                                icon = "📁",
+                                details = "已展开/点击回到 $pathDir 目录下",
+                                targetPath = navStack.subList(0, i + 1).toList()
+                            )
+                        )
+                    }
+
+                    // 2. Discover children directory names dynamically under the current directory
+                    val childDirs = mutableSetOf<String>()
+                    dems.forEach { dem ->
+                        if (dem.parentName?.lowercase() == currentDir.lowercase()) {
+                            dem.directoryName?.let { childDirs.add(it) }
+                        }
+                    }
+
+                    childDirs.sorted().forEach { childDir ->
+                        val subPath = ArrayList(navStack)
+                        subPath.add(childDir)
+                        items.add(
+                            OfflineTreeItem.Folder(
+                                name = "▶ $childDir",
+                                icon = "📁",
+                                details = "下钻/展开 $childDir 各子区划与地形高程模型",
+                                targetPath = subPath
+                            )
+                        )
+                    }
+
+                    // 3. Add actual DEM files within this directory
+                    dems.filter { it.directoryName?.lowercase() == currentDir.lowercase() }.forEach { dem ->
+                        items.add(OfflineTreeItem.DemFile(dem))
                     }
                 }
                 "使用手册" -> {
@@ -548,6 +586,66 @@ class OfflineMapActivity : AppCompatActivity() {
         }
         container.addView(etName)
 
+        val tvLevel = android.widget.TextView(this).apply {
+            text = "所属地形层级 (支持无限级分类):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvLevel)
+
+        val spinnerLevel = android.widget.Spinner(this)
+        val levelsList = listOf(
+            "地球级 (World)",
+            "大洲级 (Continent)",
+            "国家级 (Country)",
+            "省/州级 (Province)",
+            "市/郡级 (Prefecture)",
+            "区/县/景区 (District)"
+        )
+        val levelAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, levelsList).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinnerLevel.adapter = levelAdapter
+        
+        var defaultLevelSelection = 3
+        if (navStack.isNotEmpty()) {
+            val levelIndex = navStack.size
+            if (levelIndex in 1..5) {
+                defaultLevelSelection = levelIndex
+            }
+        }
+        spinnerLevel.setSelection(defaultLevelSelection)
+        container.addView(spinnerLevel)
+
+        val tvParent = android.widget.TextView(this).apply {
+            text = "所属父级节点名称 (请务必在对应父级树下列出):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvParent)
+
+        val etParent = android.widget.EditText(this).apply {
+            if (navStack.isNotEmpty()) {
+                setText(navStack.last())
+            } else {
+                setText("DEM数据")
+            }
+            hint = "例如: 世界 或 亚洲 或 辽宁"
+        }
+        container.addView(etParent)
+
+        val tvDir = android.widget.TextView(this).apply {
+            text = "关联树目录名 (或代表的国家/省份名称):"
+            textSize = 14f
+            setPadding(0, (14 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+        }
+        container.addView(tvDir)
+
+        val etDir = android.widget.EditText(this).apply {
+            hint = "留空则和显示名称一致"
+        }
+        container.addView(etDir)
+
         val tvCoverage = android.widget.TextView(this).apply {
             text = "覆盖地形范围:"
             textSize = 14f
@@ -618,6 +716,23 @@ class OfflineMapActivity : AppCompatActivity() {
 
         builder.setPositiveButton("新增配置") { dialog, _ ->
             val name = etName.text.toString().trim()
+            val level = spinnerLevel.selectedItem.toString()
+            val parent = etParent.text.toString().trim()
+            var dirName = etDir.text.toString().trim()
+            if (dirName.isEmpty()) {
+                dirName = name
+            }
+
+            val category = when {
+                level.contains("World", ignoreCase = true) || level.contains("世界") -> "地球级"
+                level.contains("Continent", ignoreCase = true) || level.contains("大洲") -> "大洲级"
+                level.contains("Country", ignoreCase = true) || level.contains("国家") -> "国家级"
+                level.contains("Province", ignoreCase = true) || level.contains("一级行政区") -> "一级行政区"
+                level.contains("Prefecture", ignoreCase = true) || level.contains("二级行政区") -> "二级行政区"
+                level.contains("District", ignoreCase = true) || level.contains("三级行政区") -> "三级行政区"
+                else -> "一级行政区"
+            }
+
             val coverage = etCoverage.text.toString().trim()
             val formatText = spinnerFormat.selectedItem.toString()
             val format = formatText.substringBefore(" (")
@@ -634,7 +749,7 @@ class OfflineMapActivity : AppCompatActivity() {
                 fileName = "custom_dem_${System.currentTimeMillis()}.$ext"
             }
 
-            mapManager.saveCustomDem(name, coverage, format, sizeStr, url, fileName)
+            mapManager.saveCustomDem(name, coverage, format, sizeStr, url, fileName, category, parent, dirName)
             renderCurrentPath()
             dialog.dismiss()
             Toast.makeText(this, "🏔️ 自定义 DEM 数据源新增成功!", Toast.LENGTH_SHORT).show()

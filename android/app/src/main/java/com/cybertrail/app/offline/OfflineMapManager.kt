@@ -50,40 +50,6 @@ class OfflineMapManager(private val context: Context) {
         }
     }
 
-    fun getPresetDirectoryInfo(id: String): Triple<String, String, String?> {
-        return when (id.lowercase()) {
-            "world" -> Triple("世界", "世界", null)
-            "asia" -> Triple("大洲", "亚洲", "世界")
-            "europe" -> Triple("大洲", "欧洲", "世界")
-            "north_america" -> Triple("大洲", "北美洲", "世界")
-            "south_america" -> Triple("大洲", "南美洲", "世界")
-            "africa" -> Triple("大洲", "非洲", "世界")
-            "oceania" -> Triple("大洲", "大洋洲", "世界")
-            "antarctica" -> Triple("大洲", "南极洲", "世界")
-            "china" -> Triple("国家", "中国", "亚洲")
-            "japan" -> Triple("国家", "日本", "亚洲")
-            "korea" -> Triple("国家", "韩国", "亚洲")
-            "usa" -> Triple("国家", "美国", "北美洲")
-            "canada" -> Triple("国家", "加拿大", "北美洲")
-            "germany" -> Triple("国家", "德国", "欧洲")
-            "france" -> Triple("国家", "法国", "欧洲")
-            "uk" -> Triple("国家", "英国", "欧洲")
-            "australia" -> Triple("国家", "澳大利亚", "大洋洲")
-            "liaoning" -> Triple("一级行政区", "辽宁", "中国")
-            "tokyo" -> Triple("一级行政区", "东京都", "日本")
-            "hokkaido" -> Triple("一级行政区", "北海道", "日本")
-            "california" -> Triple("一级行政区", "加州", "美国")
-            "bavaria" -> Triple("一级行政区", "巴伐利亚", "德国")
-            "dandong" -> Triple("二级行政区", "丹东", "辽宁")
-            "sapporo" -> Triple("二级行政区", "札幌", "北海道")
-            "los_angeles" -> Triple("二级行政区", "洛杉矶", "加州")
-            "shinjuku" -> Triple("三级行政区", "新宿", "东京都")
-            "mount_fuji" -> Triple("三级行政区", "富士山", "东京都")
-            "mount_everest" -> Triple("三级行政区", "珠峰", "中国")
-            else -> Triple("一级行政区", id, "中国")
-        }
-    }
-
     fun getCustomMapsJsonFile(): File {
         return File(baseDir, "custom_maps.json")
     }
@@ -171,7 +137,9 @@ class OfflineMapManager(private val context: Context) {
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 val id = obj.getString("id")
-                val (lvl, dir, parent) = getPresetDirectoryInfo(id)
+                val parent = if (obj.isNull("parentName")) null else obj.optString("parentName", null)
+                val dir = obj.optString("directoryName", obj.getString("name"))
+                val category = obj.optString("category", "一级行政区")
                 presetMaps.add(
                     OfflineMapRegion(
                         id = id,
@@ -181,7 +149,7 @@ class OfflineMapManager(private val context: Context) {
                         expectedSizeBytes = obj.optLong("expectedSizeBytes", 0L),
                         tileCount = obj.optInt("tileCount", 0),
                         bounds = obj.optString("bounds", ""),
-                        category = obj.optString("category", "一级行政区"),
+                        category = category,
                         minZoom = obj.optInt("minZoom", 0),
                         maxZoom = obj.optInt("maxZoom", 22),
                         parentName = parent,
@@ -418,7 +386,7 @@ class OfflineMapManager(private val context: Context) {
         return File(baseDir, "custom_dems.json")
     }
 
-    fun saveCustomDem(name: String, coverage: String, format: String, fileSizeStr: String, githubUrl: String, fileName: String) {
+    fun saveCustomDem(name: String, coverage: String, format: String, fileSizeStr: String, githubUrl: String, fileName: String, category: String, parentName: String, directoryName: String) {
         try {
             val file = getCustomDemsJsonFile()
             val jsonArray = if (file.exists()) {
@@ -439,6 +407,9 @@ class OfflineMapManager(private val context: Context) {
             obj.put("fileSizeStr", fileSizeStr)
             obj.put("githubUrl", githubUrl)
             obj.put("fileName", fileName)
+            obj.put("category", category)
+            obj.put("parentName", parentName)
+            obj.put("directoryName", directoryName)
             jsonArray.put(obj)
 
             file.writeText(jsonArray.toString(2))
@@ -454,7 +425,10 @@ class OfflineMapManager(private val context: Context) {
         val format: String,
         val fileSizeStr: String,
         val githubUrl: String,
-        val fileName: String
+        val fileName: String,
+        val category: String,
+        val parentName: String,
+        val directoryName: String
     )
 
     private fun loadCustomDemsMeta(): List<CustomDemMeta> {
@@ -473,7 +447,10 @@ class OfflineMapManager(private val context: Context) {
                             format = obj.optString("format", "GeoTIFF"),
                             fileSizeStr = obj.optString("fileSizeStr", "未知大小"),
                             githubUrl = obj.optString("githubUrl", "https://github.com"),
-                            fileName = obj.optString("fileName", "custom.tif")
+                            fileName = obj.optString("fileName", "custom.tif"),
+                            category = obj.optString("category", "二级行政区"),
+                            parentName = obj.optString("parentName", "中国"),
+                            directoryName = obj.optString("directoryName", "自定义")
                         )
                     )
                 }
@@ -493,7 +470,10 @@ class OfflineMapManager(private val context: Context) {
                 demUrl = "https://opentopography.org",
                 demType = "GeoTIFF格式 (300米精度)",
                 expectedSizeBytes = 45123456,
-                fileName = "world_dem.tif"
+                fileName = "world_dem.tif",
+                category = "地球级",
+                parentName = "DEM数据",
+                directoryName = "世界"
             ),
             OfflineDemRegion(
                 id = "japan_dem",
@@ -501,7 +481,10 @@ class OfflineMapManager(private val context: Context) {
                 demUrl = "https://opentopography.org",
                 demType = "GeoTIFF格式 (30米高精密)",
                 expectedSizeBytes = 252720000,
-                fileName = "japan_dem.tif"
+                fileName = "japan_dem.tif",
+                category = "国家级",
+                parentName = "亚洲",
+                directoryName = "日本"
             ),
             OfflineDemRegion(
                 id = "china_dem",
@@ -509,7 +492,10 @@ class OfflineMapManager(private val context: Context) {
                 demUrl = "https://opentopography.org",
                 demType = "GeoTIFF格式 (30米高精密)",
                 expectedSizeBytes = 943000000,
-                fileName = "china_dem.tif"
+                fileName = "china_dem.tif",
+                category = "国家级",
+                parentName = "亚洲",
+                directoryName = "中国"
             ),
             OfflineDemRegion(
                 id = "asia_dem",
@@ -517,7 +503,10 @@ class OfflineMapManager(private val context: Context) {
                 demUrl = "https://earthdata.nasa.gov",
                 demType = "HGT 格式 (30米级雷达测绘)",
                 expectedSizeBytes = 1258000000,
-                fileName = "asia_dem.tif"
+                fileName = "asia_dem.tif",
+                category = "大洲级",
+                parentName = "世界",
+                directoryName = "亚洲"
             ),
             OfflineDemRegion(
                 id = "liaoning_srtm",
@@ -525,7 +514,10 @@ class OfflineMapManager(private val context: Context) {
                 demUrl = "https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/Eurasia/",
                 demType = "SRTM",
                 expectedSizeBytes = 25165824,
-                fileName = "liaoning.hgt"
+                fileName = "liaoning.hgt",
+                category = "一级行政区",
+                parentName = "中国",
+                directoryName = "辽宁"
             )
         )
 
@@ -570,7 +562,10 @@ class OfflineMapManager(private val context: Context) {
                                 expectedSizeBytes = file.length(),
                                 fileName = file.name,
                                 isDownloaded = true,
-                                localPath = file.absolutePath
+                                localPath = file.absolutePath,
+                                category = "二级行政区",
+                                parentName = "辽宁",
+                                directoryName = "自定义导入"
                             )
                         )
                     }
@@ -610,7 +605,10 @@ class OfflineMapManager(private val context: Context) {
                     expectedSizeBytes = if (isOnDisk) File(demDir, meta.fileName).length() else 0L,
                     fileName = meta.fileName,
                     isDownloaded = isOnDisk,
-                    localPath = if (isOnDisk) File(demDir, meta.fileName).absolutePath else null
+                    localPath = if (isOnDisk) File(demDir, meta.fileName).absolutePath else null,
+                    category = meta.category,
+                    parentName = meta.parentName,
+                    directoryName = meta.directoryName
                 )
             )
         }

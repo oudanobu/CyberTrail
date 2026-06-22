@@ -31,62 +31,62 @@ class LocalTileServer(val mbtilesPath: String) {
 
     fun start() {
         if (isRunning) return
-        try {
-            val mapsDir = java.io.File(mbtilesPath).parentFile ?: java.io.File("/storage/emulated/0/CyberTrail/Maps")
-            if (!mapsDir.exists()) {
-                mapsDir.mkdirs()
-            }
-
-            // Open all supported map packages that exist on disk
-            val fileNames = listOf("world.mbtiles", "china.mbtiles", "liaoning.mbtiles", "dandong.mbtiles")
-            for (fileName in fileNames) {
-                val file = java.io.File(mapsDir, fileName)
-                if (file.exists()) {
-                    try {
-                        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                        dbsMap[fileName] = database
-                        Log.i(TAG, "MultiMapManager: Loaded offline map pack: $fileName")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "MultiMapManager: Failed loading map: $fileName", e)
-                    }
+        isRunning = true
+        thread(start = true, name = "LocalTileServerThread") {
+            try {
+                val mapsDir = java.io.File(mbtilesPath).parentFile ?: java.io.File("/storage/emulated/0/CyberTrail/Maps")
+                if (!mapsDir.exists()) {
+                    mapsDir.mkdirs()
                 }
-            }
 
-            // Automatic Discovery: Scan mapsDir for any other *.mbtiles files
-            val otherFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles", ignoreCase = true) }
-            if (otherFiles != null) {
-                for (file in otherFiles) {
-                    if (!dbsMap.containsKey(file.name)) {
+                // Open all supported map packages that exist on disk
+                val fileNames = listOf("world.mbtiles", "china.mbtiles", "liaoning.mbtiles", "dandong.mbtiles")
+                for (fileName in fileNames) {
+                    val file = java.io.File(mapsDir, fileName)
+                    if (file.exists()) {
                         try {
                             val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                            dbsMap[file.name] = database
-                            Log.i(TAG, "MultiMapManager (Auto-Discovered): Loaded: ${file.name}")
+                            dbsMap[fileName] = database
+                            Log.i(TAG, "MultiMapManager: Loaded offline map pack: $fileName")
                         } catch (e: Exception) {
-                            Log.e(TAG, "MultiMapManager: Failed loading auto-discovered map ${file.name}", e)
+                            Log.e(TAG, "MultiMapManager: Failed loading map: $fileName", e)
                         }
                     }
                 }
-            }
 
-            // Fallback: if none of the above are loaded, try loading the primary mbtilesPath itself
-            if (dbsMap.isEmpty()) {
-                val primaryFile = java.io.File(mbtilesPath)
-                if (primaryFile.exists()) {
-                    try {
-                        val database = SQLiteDatabase.openDatabase(primaryFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                        dbsMap[primaryFile.name] = database
-                        Log.i(TAG, "MultiMapManager: Loaded fallback primary map: ${primaryFile.name}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "MultiMapManager: Failed loading primary map: $mbtilesPath", e)
+                // Automatic Discovery: Scan mapsDir for any other *.mbtiles files
+                val otherFiles = mapsDir.listFiles { _, name -> name.endsWith(".mbtiles", ignoreCase = true) }
+                if (otherFiles != null) {
+                    for (file in otherFiles) {
+                        if (!dbsMap.containsKey(file.name)) {
+                            try {
+                                val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                                dbsMap[file.name] = database
+                                Log.i(TAG, "MultiMapManager (Auto-Discovered): Loaded: ${file.name}")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "MultiMapManager: Failed loading auto-discovered map ${file.name}", e)
+                            }
+                        }
                     }
                 }
-            }
 
-            serverSocket = ServerSocket(port)
-            isRunning = true
-            serverStarted = true
-            Log.d(TAG, "SERVER_START port=$port")
-            thread {
+                // Fallback: if none of the above are loaded, try loading the primary mbtilesPath itself
+                if (dbsMap.isEmpty()) {
+                    val primaryFile = java.io.File(mbtilesPath)
+                    if (primaryFile.exists()) {
+                        try {
+                            val database = SQLiteDatabase.openDatabase(primaryFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                            dbsMap[primaryFile.name] = database
+                            Log.i(TAG, "MultiMapManager: Loaded fallback primary map: ${primaryFile.name}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "MultiMapManager: Failed loading primary map: $mbtilesPath", e)
+                        }
+                    }
+                }
+
+                serverSocket = ServerSocket(port)
+                serverStarted = true
+                Log.d(TAG, "SERVER_START port=$port")
                 while (isRunning) {
                     try {
                         val client = serverSocket?.accept()
@@ -95,10 +95,16 @@ class LocalTileServer(val mbtilesPath: String) {
                         if (isRunning) Log.e(TAG, "Accept error", e)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start server", e)
+                isRunning = false
+                serverStarted = false
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start server", e)
         }
+    }
+
+    fun getLoadedMaps(): List<String> {
+        return dbsMap.keys.toList().sorted()
     }
 
     private fun handleRequest(client: Socket) {
@@ -197,6 +203,7 @@ class LocalTileServer(val mbtilesPath: String) {
                     if (cursor.moveToFirst()) {
                         tileData = cursor.getBlob(0)
                         Log.i(TAG, "TILE_FOUND in $fileName (size=${tileData.size}) for z=$z x=$x y=$y")
+                        Log.e("MAP_SWITCH", "Loading MBTiles = ${database.path}")
                     }
                     cursor.close()
                     if (tileData != null) {
@@ -220,6 +227,7 @@ class LocalTileServer(val mbtilesPath: String) {
                     if (cursor.moveToFirst()) {
                         tileData = cursor.getBlob(0)
                         Log.i(TAG, "TILE_FOUND in auto-discovered map $fileName (size=${tileData.size}) for z=$z x=$x y=$y")
+                        Log.e("MAP_SWITCH", "Loading MBTiles = ${database.path}")
                     }
                     cursor.close()
                     if (tileData != null) {

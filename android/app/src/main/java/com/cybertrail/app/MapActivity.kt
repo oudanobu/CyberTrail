@@ -1840,6 +1840,15 @@ ${finalStyleJsonString ?: "None"}
 
         resultLog.append("1. 打开当前加载的 MBTiles 文件:\n$mbtilesPath\n\n")
 
+        val loadedMaps = localTileServer?.getLoadedMaps() ?: emptyList()
+        if (loadedMaps.isNotEmpty()) {
+            resultLog.append("1.1 本地 TileServer 已就绪，共装载并监控 ${loadedMaps.size} 个离线包:\n")
+            loadedMaps.forEach { mapName ->
+                resultLog.append("  • 和渲染相关的离线瓦片库: $mapName\n")
+            }
+            resultLog.append("\n")
+        }
+
         var db: android.database.sqlite.SQLiteDatabase? = null
         try {
             db = android.database.sqlite.SQLiteDatabase.openDatabase(

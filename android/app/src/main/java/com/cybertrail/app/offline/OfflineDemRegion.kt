@@ -11,5 +11,8 @@ data class OfflineDemRegion(
     var isDownloading: Boolean = false,
     var progress: Int = 0,
     var localPath: String? = null,
-    var downloadId: Long = -1L
+    var downloadId: Long = -1L,
+    var category: String = "二级行政区",
+    var parentName: String? = null,
+    var directoryName: String? = null
 )
