@@ -12,6 +12,7 @@ class LocalTileServer(val mbtilesPath: String) {
     private var isRunning = false
     private val TAG = "LocalTileServer"
     private val dbsMap = java.util.concurrent.ConcurrentHashMap<String, SQLiteDatabase>()
+    private val formatsMap = java.util.concurrent.ConcurrentHashMap<String, String>()
     val port = 8080
 
     var onTileRequest: (() -> Unit)? = null
@@ -28,6 +29,10 @@ class LocalTileServer(val mbtilesPath: String) {
     var lastRequestTimestamp: String? = null
     var serverStarted = false
     var onRequestLogged: (() -> Unit)? = null
+
+    fun getMapFormat(fileName: String): String {
+        return formatsMap[fileName] ?: "unknown"
+    }
 
     fun start() {
         if (isRunning) return
@@ -47,7 +52,16 @@ class LocalTileServer(val mbtilesPath: String) {
                         try {
                             val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                             dbsMap[fileName] = database
-                            Log.i(TAG, "MultiMapManager: Loaded offline map pack: $fileName")
+                            var dbFormat = "unknown"
+                            try {
+                                val metaCursor = database.rawQuery("SELECT value FROM metadata WHERE name = 'format'", null)
+                                if (metaCursor.moveToFirst()) {
+                                    dbFormat = metaCursor.getString(0) ?: "unknown"
+                                }
+                                metaCursor.close()
+                            } catch (metaEx: Exception) {}
+                            formatsMap[fileName] = dbFormat
+                            Log.i(TAG, "MultiMapManager: Loaded offline map pack: $fileName with format: $dbFormat")
                         } catch (e: Exception) {
                             Log.e(TAG, "MultiMapManager: Failed loading map: $fileName", e)
                         }
@@ -62,7 +76,16 @@ class LocalTileServer(val mbtilesPath: String) {
                             try {
                                 val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                                 dbsMap[file.name] = database
-                                Log.i(TAG, "MultiMapManager (Auto-Discovered): Loaded: ${file.name}")
+                                var dbFormat = "unknown"
+                                try {
+                                    val metaCursor = database.rawQuery("SELECT value FROM metadata WHERE name = 'format'", null)
+                                    if (metaCursor.moveToFirst()) {
+                                        dbFormat = metaCursor.getString(0) ?: "unknown"
+                                    }
+                                    metaCursor.close()
+                                } catch (metaEx: Exception) {}
+                                formatsMap[file.name] = dbFormat
+                                Log.i(TAG, "MultiMapManager (Auto-Discovered): Loaded: ${file.name} with format: $dbFormat")
                             } catch (e: Exception) {
                                 Log.e(TAG, "MultiMapManager: Failed loading auto-discovered map ${file.name}", e)
                             }
@@ -77,14 +100,28 @@ class LocalTileServer(val mbtilesPath: String) {
                         try {
                             val database = SQLiteDatabase.openDatabase(primaryFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                             dbsMap[primaryFile.name] = database
-                            Log.i(TAG, "MultiMapManager: Loaded fallback primary map: ${primaryFile.name}")
+                            var dbFormat = "unknown"
+                            try {
+                                val metaCursor = database.rawQuery("SELECT value FROM metadata WHERE name = 'format'", null)
+                                if (metaCursor.moveToFirst()) {
+                                    dbFormat = metaCursor.getString(0) ?: "unknown"
+                                }
+                                metaCursor.close()
+                            } catch (metaEx: Exception) {}
+                            formatsMap[primaryFile.name] = dbFormat
+                            Log.i(TAG, "MultiMapManager: Loaded fallback primary map: ${primaryFile.name} with format: $dbFormat")
                         } catch (e: Exception) {
                             Log.e(TAG, "MultiMapManager: Failed loading primary map: $mbtilesPath", e)
                         }
                     }
                 }
 
-                serverSocket = ServerSocket(port)
+                // Robust server socket mapping to avoid TIME_WAIT / Address already in use blockages
+                val socket = ServerSocket()
+                socket.reuseAddress = true
+                socket.bind(java.net.InetSocketAddress(port))
+                serverSocket = socket
+
                 serverStarted = true
                 Log.d(TAG, "SERVER_START port=$port")
                 while (isRunning) {

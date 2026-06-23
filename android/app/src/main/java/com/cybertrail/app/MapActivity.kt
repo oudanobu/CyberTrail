@@ -1843,8 +1843,22 @@ ${finalStyleJsonString ?: "None"}
         val loadedMaps = localTileServer?.getLoadedMaps() ?: emptyList()
         if (loadedMaps.isNotEmpty()) {
             resultLog.append("1.1 本地 TileServer 已就绪，共装载并监控 ${loadedMaps.size} 个离线包:\n")
+            var hasPbf = false
             loadedMaps.forEach { mapName ->
-                resultLog.append("  • 和渲染相关的离线瓦片库: $mapName\n")
+                val format = localTileServer?.getMapFormat(mapName) ?: "unknown"
+                resultLog.append("  • 离线层 [ $mapName ] (瓦片格式元数据 format: ${format.toUpperCase()})\n")
+                if (format.toLowerCase() == "pbf") {
+                    hasPbf = true
+                    resultLog.append("    ⚠️⚠️⚠️ [异常警报]: 该瓦片库使用的是 VECTOR PBF (矢量) 瓦片格式！\n")
+                    resultLog.append("    ⚠️⚠️⚠️ [根本死锁]: CyberTrail 内置极简 Raster 渲染底座，无法解析并绘制 pb/gzip 高精密几何矢量瓦片。\n")
+                    resultLog.append("    ⚠️⚠️⚠️ [解决对策]: MapFactory 编译底图时，输出配置必须选择 RASTER PNG/JPEG 离线格式！\n")
+                }
+            }
+            if (hasPbf) {
+                resultLog.append("----------------------------------------\n")
+                resultLog.append("❌ 【重点诊断结论】:\n")
+                resultLog.append("检测到地图包列表中含有 Vector MBTiles (format = pbf / Compression = GZIP) 矢量瓦片，而本系统的 style.json 使用的是 Raster Source 和 Raster Layer 栅格渲染管线，两者天然物理不兼容！这解释了为什么放大或重命名后地图完全空白！\n")
+                resultLog.append("----------------------------------------\n")
             }
             resultLog.append("\n")
         }

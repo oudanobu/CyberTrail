@@ -208,27 +208,38 @@ export default function App() {
     addLog(`[DOWNLOAD] Initiating official download request for ${pkgId}.mbtiles.`);
   };
 
+  const downloadingPkgId = mapPackages.find(p => p.status === 'downloading')?.id || '';
+
   useEffect(() => {
-    const activeDownloader = mapPackages.find(p => p.status === 'downloading');
-    if (!activeDownloader) return;
+    if (!downloadingPkgId) return;
 
     const interval = setInterval(() => {
-      setMapPackages(prev => prev.map(pkg => {
-        if (pkg.id === activeDownloader.id) {
-          const currentProgress = pkg.progress || 0;
-          if (currentProgress >= 100) {
-            addLog(`[SYSTEM] Finished downloading ${pkg.filename}. Saving directly to: /storage/emulated/0/CyberTrail/Maps/`);
-            addLog(`[DISCOVERY] Saved and indexed new catalog of offline tiles structure from ${pkg.filename}. Available instantly without APK restart.`);
-            return { ...pkg, status: 'installed', progress: undefined };
+      setMapPackages(prev => {
+        let finishedPkgFilename = '';
+        const next = prev.map(pkg => {
+          if (pkg.id === downloadingPkgId) {
+            const currentProgress = pkg.progress || 0;
+            if (currentProgress >= 100) {
+              finishedPkgFilename = pkg.filename;
+              return { ...pkg, status: 'installed' as const, progress: undefined };
+            }
+            return { ...pkg, progress: currentProgress + 25 };
           }
-          return { ...pkg, progress: currentProgress + 25 };
+          return pkg;
+        });
+
+        if (finishedPkgFilename) {
+          setTimeout(() => {
+            addLog(`[SYSTEM] Finished downloading ${finishedPkgFilename}. Saving directly to: /storage/emulated/0/CyberTrail/Maps/`);
+            addLog(`[DISCOVERY] Saved and indexed new catalog of offline tiles structure from ${finishedPkgFilename}. Available instantly without APK restart.`);
+          }, 0);
         }
-        return pkg;
-      }));
+        return next;
+      });
     }, 600);
 
     return () => clearInterval(interval);
-  }, [mapPackages]);
+  }, [downloadingPkgId]);
 
   // Dynamic route resolution simulator for multi-map switching
   const runSourceSelector = (lat: number, lon: number, zoom: number) => {
@@ -286,9 +297,14 @@ export default function App() {
     setSelectedSource(matchedSource);
   };
 
+  const installedPkgIdsString = mapPackages
+    .filter(p => p.status === 'installed')
+    .map(p => p.id)
+    .join(',');
+
   useEffect(() => {
     runSourceSelector(queryLat, queryLon, queryZoom);
-  }, [queryLat, queryLon, queryZoom, mapPackages]);
+  }, [queryLat, queryLon, queryZoom, installedPkgIdsString]);
 
   // Offline GIS terrain analysis math
   const executeGisAnalysisOffgrid = () => {
@@ -1137,6 +1153,7 @@ export default function App() {
                     {hudTelemetrySource === 'DEM' && hasDemFiles ? `${simElev.toFixed(1)} m` :
                      hudTelemetrySource === 'GPS' ? '681.2 m' :
                      hudTelemetrySource === 'SIMULATION' ? '520.4 m (Not Allowed in Prod)' :
+                     hudTelemetrySource === 'NONE' ? '--' :
                      '无DEM数据'}
                   </span>
                 </div>
