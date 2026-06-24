@@ -1003,6 +1003,7 @@ ${finalStyleJsonString ?: "None"}
                 if (map.locationComponent.isLocationComponentEnabled) {
                     map.locationComponent.forceLocationUpdate(location)
                 }
+                Unit
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating LocationComponent", e)
             }
@@ -1092,6 +1093,7 @@ ${finalStyleJsonString ?: "None"}
                 if (map.locationComponent.isLocationComponentEnabled) {
                     map.locationComponent.forceLocationUpdate(location)
                 }
+                Unit
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating map camera or LocationComponent", e)
             }
