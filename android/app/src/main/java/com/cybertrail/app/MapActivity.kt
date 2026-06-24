@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.ScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.drawerlayout.widget.DrawerLayout
@@ -27,6 +28,16 @@ import com.mapbox.mapboxsdk.maps.MapView
 import com.mapbox.mapboxsdk.maps.MapboxMap
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback
 import com.mapbox.mapboxsdk.maps.Style
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.Priority
+import com.mapbox.mapboxsdk.location.LocationComponent
+import com.mapbox.mapboxsdk.location.LocationComponentActivationOptions
+import com.mapbox.mapboxsdk.location.modes.CameraMode
+import com.mapbox.mapboxsdk.location.modes.RenderMode
 import java.io.File
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
@@ -91,6 +102,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var mbtilesScanResult: String? = null
 
     private lateinit var locationManager: LocationManager
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var tvPanelLat: TextView
+    private lateinit var tvPanelLon: TextView
+    private lateinit var tvPanelAlt: TextView
+    private lateinit var tvPanelAccuracy: TextView
+    private lateinit var tvPanelSpeed: TextView
+    private lateinit var tvPanelBearing: TextView
+    private lateinit var btnLocate: View
 
     companion object {
         private const val TAG = "MapActivity"
@@ -160,6 +179,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         }
 
         mapView = findViewById(R.id.mapView)
+
+        tvPanelLat = findViewById(R.id.tv_panel_lat)
+        tvPanelLon = findViewById(R.id.tv_panel_lon)
+        tvPanelAlt = findViewById(R.id.tv_panel_alt)
+        tvPanelAccuracy = findViewById(R.id.tv_panel_accuracy)
+        tvPanelSpeed = findViewById(R.id.tv_panel_speed)
+        tvPanelBearing = findViewById(R.id.tv_panel_bearing)
+        btnLocate = findViewById(R.id.btn_locate)
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        btnLocate.setOnClickListener {
+            performLocateAction()
+        }
+
         hudElevation = findViewById(R.id.hud_elevation)
         hudSlope = findViewById(R.id.hud_slope)
         hudAspect = findViewById(R.id.hud_aspect)
@@ -804,6 +838,7 @@ ${finalStyleJsonString ?: "None"}
 
                     runCameraForcedTest(map)
                     updateDiagnosticHud()
+                    enableLocationComponent(style)
                 }
             } else {
                 // Load OSM fallback map
@@ -838,6 +873,7 @@ ${finalStyleJsonString ?: "None"}
                     }
                     runCameraForcedTest(map)
                     updateDiagnosticHud()
+                    enableLocationComponent(style)
                 }
             }
         } catch (e: Exception) {
@@ -955,8 +991,159 @@ ${finalStyleJsonString ?: "None"}
         }
         lastGpsLatitude = lat
         lastGpsLongitude = lon
+        
+        Log.d("CYBERTRAIL_MAP", "CurrentLatitude: $lat, CurrentLongitude: $lon, Accuracy: ${location.accuracy}, Bearing: ${location.bearing}, Provider: ${location.provider ?: "GPS"}")
+
+        updateLocationPanel(location)
         updateTerrainHud(lat, lon)
         updateDiagnosticHud()
+
+        mapboxMap?.let { map ->
+            try {
+                if (map.locationComponent.isLocationComponentEnabled) {
+                    map.locationComponent.forceLocationUpdate(location)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating LocationComponent", e)
+            }
+        }
+    }
+
+    private fun performLocateAction() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1001)
+            return
+        }
+
+        Toast.makeText(this, "正在获取精准定位...", Toast.LENGTH_SHORT).show()
+
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                moveToLocation(location)
+            } else {
+                try {
+                    val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000).apply {
+                        setMaxUpdates(1)
+                    }.build()
+                    
+                    fusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
+                        override fun onLocationResult(locationResult: LocationResult) {
+                            val newLocation = locationResult.lastLocation
+                            if (newLocation != null) {
+                                moveToLocation(newLocation)
+                            } else {
+                                fallbackToSystemLocation()
+                            }
+                        }
+                    }, mainLooper)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error requesting FusedLocation, fallback", e)
+                    fallbackToSystemLocation()
+                }
+            }
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "FusedLocationProvider failed", e)
+            fallbackToSystemLocation()
+        }
+    }
+
+    private fun fallbackToSystemLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        val sysLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+        if (sysLocation != null) {
+            moveToLocation(sysLocation)
+        } else {
+            Toast.makeText(this, "无法获取当前位置，请确认已开启GPS或高精度定位服务", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun moveToLocation(location: Location) {
+        val lat = location.latitude
+        val lon = location.longitude
+        val zoom = 15.0
+        val accuracy = location.accuracy
+        val bearing = location.bearing
+        val provider = location.provider ?: "FusedLocation"
+
+        Log.d("CYBERTRAIL_MAP", "CurrentLatitude: $lat, CurrentLongitude: $lon, Accuracy: $accuracy, Bearing: $bearing, Provider: $provider")
+
+        lastGpsLatitude = lat
+        lastGpsLongitude = lon
+        if (location.hasAltitude()) {
+            lastGpsAltitude = location.altitude
+        } else {
+            lastGpsAltitude = null
+        }
+
+        updateLocationPanel(location)
+        updateTerrainHud(lat, lon)
+        updateDiagnosticHud()
+
+        mapboxMap?.let { map ->
+            try {
+                val cameraUpdate = com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngZoom(
+                    com.mapbox.mapboxsdk.geometry.LatLng(lat, lon), zoom
+                )
+                map.animateCamera(cameraUpdate)
+                
+                if (map.locationComponent.isLocationComponentEnabled) {
+                    map.locationComponent.forceLocationUpdate(location)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating map camera or LocationComponent", e)
+            }
+        }
+    }
+
+    private fun updateLocationPanel(location: Location) {
+        runOnUiThread {
+            tvPanelLat.text = "Lat: %.6f°".format(location.latitude)
+            tvPanelLon.text = "Lon: %.6f°".format(location.longitude)
+            
+            if (location.hasAltitude()) {
+                tvPanelAlt.text = "Alt: %.0fm".format(location.altitude)
+            } else {
+                tvPanelAlt.text = "Alt: N/A"
+            }
+            
+            if (location.hasAccuracy()) {
+                tvPanelAccuracy.text = "Accuracy: %.0fm".format(location.accuracy)
+            } else {
+                tvPanelAccuracy.text = "Accuracy: N/A"
+            }
+            
+            if (location.hasSpeed()) {
+                tvPanelSpeed.text = "Speed: %.1fm/s".format(location.speed)
+            } else {
+                tvPanelSpeed.text = "Speed: N/A"
+            }
+            
+            if (location.hasBearing()) {
+                tvPanelBearing.text = "Bearing: %.0f°".format(location.bearing)
+            } else {
+                tvPanelBearing.text = "Bearing: N/A"
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001 || requestCode == 1002) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startGpsTracking()
+                mapboxMap?.style?.let { style ->
+                    enableLocationComponent(style)
+                }
+                if (requestCode == 1001) {
+                    performLocateAction()
+                }
+            } else {
+                Toast.makeText(this, "定位权限被拒绝，无法获取当前位置", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -970,26 +1157,28 @@ ${finalStyleJsonString ?: "None"}
     }
 
     override fun onResume() {
-        super.onResume();
-        mapView.onResume();
+        super.onResume()
+        mapView.onResume()
         Log.d("CYBERTRAIL_MAP", "MapView onResume")
+        startGpsTracking()
     }
 
     override fun onPause() {
-        super.onPause();
-        mapView.onPause();
+        super.onPause()
+        mapView.onPause()
         Log.d("CYBERTRAIL_MAP", "MapView onPause")
+        locationManager.removeUpdates(this)
     }
 
     override fun onStop() {
-        super.onStop();
-        mapView.onStop();
+        super.onStop()
+        mapView.onStop()
         Log.d("CYBERTRAIL_MAP", "MapView onStop")
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState);
-        mapView.onSaveInstanceState(outState);
+        super.onSaveInstanceState(outState)
+        mapView.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
@@ -1004,8 +1193,36 @@ ${finalStyleJsonString ?: "None"}
     }
 
     override fun onLowMemory() {
-        super.onLowMemory();
-        mapView.onLowMemory();
+        super.onLowMemory()
+        mapView.onLowMemory()
+    }
+
+    private fun enableLocationComponent(loadedMapStyle: Style) {
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                val locationComponent = mapboxMap?.locationComponent ?: return
+                val activationOptions = LocationComponentActivationOptions.builder(this, loadedMapStyle)
+                    .useDefaultLocationEngine(true)
+                    .build()
+                locationComponent.activateLocationComponent(activationOptions)
+                locationComponent.isLocationComponentEnabled = true
+                locationComponent.cameraMode = CameraMode.NONE
+                locationComponent.renderMode = RenderMode.COMPASS
+                
+                val lastLoc = try {
+                    locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                        ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                } catch (e: SecurityException) {
+                    null
+                }
+                lastLoc?.let {
+                    locationComponent.forceLocationUpdate(it)
+                    updateLocationPanel(it)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable LocationComponent: ${e.message}", e)
+        }
     }
 
     private fun updateDiagnosticHud() {

@@ -39,4 +39,7 @@ dependencies {
     
     // MapLibre Open-Source SDK (Full com.mapbox.mapboxsdk compatibility)
     implementation 'org.maplibre.gl:android-sdk:10.0.2'
+    
+    // Google Play Services Location for FusedLocationProviderClient
+    implementation 'com.google.android.gms:play-services-location:21.2.0'
 }

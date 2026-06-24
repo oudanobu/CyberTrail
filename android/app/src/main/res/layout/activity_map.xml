@@ -36,6 +36,113 @@
             android:clickable="true"
             android:focusable="true"/>
 
+        <!-- Location Info Panel (🛰️ 离线定位面板) -->
+        <LinearLayout
+            android:id="@+id/panel_location_info"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentTop="true"
+            android:layout_marginTop="36dp"
+            android:layout_marginRight="16dp"
+            android:background="@drawable/location_panel_bg"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:elevation="12dp"
+            android:minWidth="150dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🛰️ 离线定位系统"
+                android:textColor="@color/cyber_green"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp"/>
+
+            <TextView
+                android:id="@+id/tv_panel_lat"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lat: 获取中..."
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp"
+                android:fontFamily="monospace"/>
+
+            <TextView
+                android:id="@+id/tv_panel_lon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lon: 获取中..."
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp"
+                android:fontFamily="monospace"/>
+
+            <TextView
+                android:id="@+id/tv_panel_alt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Alt: 获取中..."
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp"
+                android:fontFamily="monospace"/>
+
+            <TextView
+                android:id="@+id/tv_panel_accuracy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Accuracy: 获取中..."
+                android:textColor="@color/cyber_amber"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp"
+                android:fontFamily="monospace"/>
+
+            <TextView
+                android:id="@+id/tv_panel_speed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Speed: 获取中..."
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp"
+                android:fontFamily="monospace"/>
+
+            <TextView
+                android:id="@+id/tv_panel_bearing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bearing: 获取中..."
+                android:textColor="@color/white"
+                android:textSize="11sp"
+                android:fontFamily="monospace"/>
+        </LinearLayout>
+
+        <!-- Locate Button ◎ 定位 -->
+        <TextView
+            android:id="@+id/btn_locate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginRight="16dp"
+            android:layout_marginBottom="36dp"
+            android:background="@drawable/locate_btn_bg"
+            android:textColor="@color/cyber_green"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingLeft="18dp"
+            android:paddingRight="18dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
+            android:text="◎ 定位"
+            android:gravity="center"
+            android:elevation="12dp"
+            android:clickable="true"
+            android:focusable="true"/>
+
     </RelativeLayout>
 
     <!-- Side Menu / Drawer (sliding from start/left) -->
