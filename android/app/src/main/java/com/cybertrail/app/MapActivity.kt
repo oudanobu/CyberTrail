@@ -53,6 +53,11 @@ import java.util.concurrent.Executors
 import android.os.Handler
 import android.os.Looper
 import java.io.File
+import android.net.Uri
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
+import com.cybertrail.app.gis.TrackFileHelper
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
@@ -142,11 +147,40 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var btnTrackPause: View
     private lateinit var btnTrackResume: View
     private lateinit var btnTrackStop: View
+    private lateinit var btnTrackSave: View
+
+    private lateinit var trackListContainer: LinearLayout
+    private lateinit var btnTrackImportGpx: View
+    private var loadedTrackId: Long? = null
+    private val loadedTrackPoints = mutableListOf<TrackPoint>()
+    private var lastDiskSaveTime: Long = 0L
+
+    private val importGpxLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            importGpxFromUri(uri)
+        }
+    }
 
     private val trackSaveIntervalMs = 10000L
     private val saveRunnable = object : Runnable {
         override fun run() {
             savePendingPoints()
+
+            // Sync to disk every 60 seconds during recording to prevent crash data loss
+            if (trackStatus == "RECORDING" && System.currentTimeMillis() - lastDiskSaveTime >= 60000L) {
+                val currentPointsCopy = synchronized(currentTrackPoints) { ArrayList(currentTrackPoints) }
+                val trackId = currentTrackId
+                dbExecutor.execute {
+                    val track = trackDao.getTrackById(trackId)
+                    if (track != null) {
+                        TrackFileHelper.saveTrackToJson(track, currentPointsCopy)
+                    }
+                }
+                lastDiskSaveTime = System.currentTimeMillis()
+            }
+
             mainHandler.postDelayed(this, trackSaveIntervalMs)
         }
     }
@@ -1237,13 +1271,18 @@ ${finalStyleJsonString ?: "None"}
         
         mainHandler.removeCallbacks(saveRunnable)
         mainHandler.removeCallbacks(durationRunnable)
-        savePendingPoints()
+        
+        // Immediately save the active track to SQLite and JSON file on pause (going to background)
+        forceSaveCurrentTrackToDisk()
     }
 
     override fun onStop() {
         super.onStop()
         mapView.onStop()
         Log.d("CYBERTRAIL_MAP", "MapView onStop")
+        
+        // Switched to background / stopped
+        forceSaveCurrentTrackToDisk()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1296,6 +1335,7 @@ ${finalStyleJsonString ?: "None"}
         
         // Also draw any restored track line when map style is loaded
         drawTrackOnMap()
+        drawLoadedTrackOnMap()
     }
 
     private fun updateDiagnosticHud() {
@@ -2339,40 +2379,118 @@ ${finalStyleJsonString ?: "None"}
         btnTrackPause = findViewById(R.id.btn_track_pause)
         btnTrackResume = findViewById(R.id.btn_track_resume)
         btnTrackStop = findViewById(R.id.btn_track_stop)
+        btnTrackSave = findViewById(R.id.btn_track_save)
 
         btnTrackStart.setOnClickListener { startRecordingTrack() }
         btnTrackPause.setOnClickListener { pauseRecordingTrack() }
         btnTrackResume.setOnClickListener { resumeRecordingTrack() }
         btnTrackStop.setOnClickListener { stopRecordingTrack() }
+        btnTrackSave.setOnClickListener { manuallySaveTrack() }
 
-        // Restore track on startup
+        // Bind Track Manager UI
+        trackListContainer = findViewById(R.id.drawer_track_list_container)
+        btnTrackImportGpx = findViewById(R.id.btn_track_import_gpx)
+        btnTrackImportGpx.setOnClickListener {
+            try {
+                importGpxLauncher.launch("*/*")
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法启动文件选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Load track history list on startup
+        refreshTrackList()
+
+        // Restore track on startup with option dialog
         dbExecutor.execute {
-            val activeTrack = trackDao.getActiveTrack()
-            if (activeTrack != null) {
-                val points = trackDao.getTrackPoints(activeTrack.id)
-                runOnUiThread {
-                    currentTrackId = activeTrack.id
-                    trackStatus = activeTrack.status
-                    trackStartTime = activeTrack.startTime
-                    // calculate elapsed time
-                    trackTotalSeconds = (System.currentTimeMillis() - activeTrack.startTime) / 1000L
-                    if (trackTotalSeconds < 0) trackTotalSeconds = 0L
+            val uncompletedFiles = TrackFileHelper.scanUncompletedTrackFiles()
+            if (uncompletedFiles.isNotEmpty()) {
+                val file = uncompletedFiles.first()
+                val parsed = TrackFileHelper.readTrackFromJson(file)
+                if (parsed != null) {
+                    val track = parsed.first
+                    val points = parsed.second
+                    
+                    runOnUiThread {
+                        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle("发现未正常结束的轨迹记录")
+                            .setMessage("系统检测到上次有未正常结束的轨迹记录，是否恢复并继续记录？\n\n轨迹名称: ${track.name ?: "未命名轨迹"}\n点数: ${points.size}")
+                            .setCancelable(false)
+                            .setPositiveButton("恢复") { _, _ ->
+                                dbExecutor.execute {
+                                    // Make sure it exists/updated in Room
+                                    val existing = trackDao.getTrackById(track.id)
+                                    if (existing == null) {
+                                        trackDao.insertTrack(track)
+                                        trackDao.insertTrackPoints(points)
+                                    } else {
+                                        existing.status = track.status
+                                        trackDao.updateTrack(existing)
+                                    }
+                                    
+                                    runOnUiThread {
+                                        currentTrackId = track.id
+                                        trackStatus = track.status
+                                        trackStartTime = track.startTime
+                                        trackTotalSeconds = (System.currentTimeMillis() - track.startTime) / 1000L
+                                        if (trackTotalSeconds < 0) trackTotalSeconds = 0L
 
-                    currentTrackPoints.clear()
-                    currentTrackPoints.addAll(points)
+                                        currentTrackPoints.clear()
+                                        currentTrackPoints.addAll(points)
 
-                    Log.d("CYBERTRAIL_TRACK", "Restored active track ID $currentTrackId with ${points.size} points. Status: $trackStatus")
-                    Toast.makeText(this, "检测到未完成轨迹，已自动恢复记录", Toast.LENGTH_SHORT).show()
+                                        updateTrackUi()
+                                        drawTrackOnMap()
 
-                    updateTrackUi()
-                    drawTrackOnMap()
+                                        // Restart background runnables
+                                        mainHandler.removeCallbacks(saveRunnable)
+                                        mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
 
-                    // Restart background runnables
-                    mainHandler.removeCallbacks(saveRunnable)
-                    mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+                                        mainHandler.removeCallbacks(durationRunnable)
+                                        mainHandler.post(durationRunnable)
 
-                    mainHandler.removeCallbacks(durationRunnable)
-                    mainHandler.post(durationRunnable)
+                                        Toast.makeText(this, "轨迹记录已恢复，继续记录中", Toast.LENGTH_SHORT).show()
+                                        refreshTrackList()
+                                    }
+                                }
+                            }
+                            .setNegativeButton("丢弃") { _, _ ->
+                                dbExecutor.execute {
+                                    // Delete from disk & database
+                                    TrackFileHelper.deleteTrackJsonFile(track.id)
+                                    trackDao.deleteTrackById(track.id)
+                                    runOnUiThread {
+                                        Toast.makeText(this, "未完成的轨迹记录已丢弃", Toast.LENGTH_SHORT).show()
+                                        refreshTrackList()
+                                    }
+                                }
+                            }
+                            .show()
+                    }
+                }
+            } else {
+                // Fallback: Check if active track exists in local Room DB just in case
+                val activeTrack = trackDao.getActiveTrack()
+                if (activeTrack != null) {
+                    val points = trackDao.getTrackPoints(activeTrack.id)
+                    runOnUiThread {
+                        currentTrackId = activeTrack.id
+                        trackStatus = activeTrack.status
+                        trackStartTime = activeTrack.startTime
+                        trackTotalSeconds = (System.currentTimeMillis() - activeTrack.startTime) / 1000L
+                        if (trackTotalSeconds < 0) trackTotalSeconds = 0L
+
+                        currentTrackPoints.clear()
+                        currentTrackPoints.addAll(points)
+
+                        updateTrackUi()
+                        drawTrackOnMap()
+
+                        mainHandler.removeCallbacks(saveRunnable)
+                        mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+
+                        mainHandler.removeCallbacks(durationRunnable)
+                        mainHandler.post(durationRunnable)
+                    }
                 }
             }
         }
@@ -2427,6 +2545,7 @@ ${finalStyleJsonString ?: "None"}
                     trackStatus = "PAUSED"
                     Toast.makeText(this, "轨迹记录已暂停", Toast.LENGTH_SHORT).show()
                     updateTrackUi()
+                    forceSaveCurrentTrackToDisk()
                 }
             }
         }
@@ -2446,6 +2565,7 @@ ${finalStyleJsonString ?: "None"}
                     trackStatus = "RECORDING"
                     Toast.makeText(this, "恢复轨迹记录", Toast.LENGTH_SHORT).show()
                     updateTrackUi()
+                    forceSaveCurrentTrackToDisk()
                 }
             }
         }
@@ -2463,15 +2583,31 @@ ${finalStyleJsonString ?: "None"}
                 track.endTime = endTime
                 trackDao.updateTrack(track)
 
-                // Save remaining pending points
-                savePendingPoints()
+                // Save remaining pending points synchronously
+                val remainingPoints = synchronized(pendingPointsToSave) {
+                    val copy = ArrayList(pendingPointsToSave)
+                    pendingPointsToSave.clear()
+                    copy
+                }
+                if (remainingPoints.isNotEmpty()) {
+                    try {
+                        trackDao.insertTrackPoints(remainingPoints)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error inserting remaining points", e)
+                    }
+                }
+
+                // Auto-save completed track to disk as .track JSON
+                val allPoints = trackDao.getTrackPoints(trackId)
+                TrackFileHelper.saveTrackToJson(track, allPoints)
 
                 runOnUiThread {
                     trackStatus = "STOPPED"
-                    Toast.makeText(this, "轨迹记录已停止，已成功保存", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "轨迹记录已结束，已成功保存至离线存储", Toast.LENGTH_LONG).show()
                     
                     // Stop runnables
                     mainHandler.removeCallbacks(saveRunnable)
+                    mainHandler.removeCallbacks(durationRunnable)
                     
                     // Update final UI
                     tvTrackStatus.text = "🛤️ 轨迹: 已结束"
@@ -2479,6 +2615,9 @@ ${finalStyleJsonString ?: "None"}
                     btnTrackPause.visibility = View.GONE
                     btnTrackResume.visibility = View.GONE
                     btnTrackStop.visibility = View.GONE
+
+                    // Refresh track history list
+                    refreshTrackList()
                 }
             }
         }
@@ -2584,6 +2723,7 @@ ${finalStyleJsonString ?: "None"}
                     btnTrackPause.visibility = View.GONE
                     btnTrackResume.visibility = View.GONE
                     btnTrackStop.visibility = View.GONE
+                    btnTrackSave.visibility = View.GONE
                 }
                 "RECORDING" -> {
                     tvTrackStatus.text = "🛤️ 轨迹: ● 正在记录"
@@ -2592,6 +2732,7 @@ ${finalStyleJsonString ?: "None"}
                     btnTrackPause.visibility = View.VISIBLE
                     btnTrackResume.visibility = View.GONE
                     btnTrackStop.visibility = View.VISIBLE
+                    btnTrackSave.visibility = View.VISIBLE
                 }
                 "PAUSED" -> {
                     tvTrackStatus.text = "🛤️ 轨迹: ⏸ 已暂停"
@@ -2600,6 +2741,7 @@ ${finalStyleJsonString ?: "None"}
                     btnTrackPause.visibility = View.GONE
                     btnTrackResume.visibility = View.VISIBLE
                     btnTrackStop.visibility = View.VISIBLE
+                    btnTrackSave.visibility = View.VISIBLE
                 }
             }
             updateTrackStatsUi()
@@ -2616,4 +2758,452 @@ ${finalStyleJsonString ?: "None"}
             tvTrackStats.text = "点数: $pointCount | 时间: $timeStr"
         }
     }
+
+    private fun importGpxFromUri(uri: Uri) {
+        dbExecutor.execute {
+            try {
+                val tempFile = File(cacheDir, "temp_import.gpx")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val importedTrack = TrackFileHelper.importGpx(tempFile, trackDao)
+                runOnUiThread {
+                    if (importedTrack != null) {
+                        Toast.makeText(this, "成功导入轨迹: ${importedTrack.name ?: "未命名"}", Toast.LENGTH_LONG).show()
+                        refreshTrackList()
+                    } else {
+                        Toast.makeText(this, "导入失败，GPX文件损坏或无轨迹点", Toast.LENGTH_LONG).show()
+                    }
+                    try { tempFile.delete() } catch(e: Exception) {}
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error importing GPX from URI", e)
+                runOnUiThread {
+                    Toast.makeText(this, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun refreshTrackList() {
+        dbExecutor.execute {
+            try {
+                val tracks = trackDao.getAllTracks()
+                
+                // For each track, load points count and distance
+                val trackItems = tracks.map { track ->
+                    val points = trackDao.getTrackPoints(track.id)
+                    val distMeters = calculateDistance(points)
+                    TrackItemData(track, points.size, distMeters)
+                }
+
+                runOnUiThread {
+                    trackListContainer.removeAllViews()
+                    if (trackItems.isEmpty()) {
+                        val tvEmpty = TextView(this).apply {
+                            text = "暂无历史轨迹记录"
+                            setTextColor(0xFF94A3B8.toInt())
+                            textSize = 12f
+                            gravity = android.view.Gravity.CENTER
+                            setPadding(0, (16 * resources.displayMetrics.density).toInt(), 0, (16 * resources.displayMetrics.density).toInt())
+                        }
+                        trackListContainer.addView(tvEmpty)
+                        return@runOnUiThread
+                    }
+
+                    val density = resources.displayMetrics.density
+                    val sdfDate = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+
+                    for (item in trackItems) {
+                        val track = item.track
+                        
+                        // Parent Layout
+                        val itemLayout = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            val pad = (10 * density).toInt()
+                            setPadding(pad, pad, pad, pad)
+                            
+                            val marginParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, (10 * density).toInt())
+                            }
+                            layoutParams = marginParams
+                            
+                            // Visual glassmorphism look
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                setColor(0x13FFFFFF) // semi transparent dark/gray
+                                setStroke((1 * density).toInt(), 0x22FFFFFF)
+                                cornerRadius = 6 * density
+                            }
+                        }
+
+                        // Title and Status
+                        val titleLayout = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+
+                        val tvName = TextView(this).apply {
+                            text = track.name ?: "轨迹 #${track.id}"
+                            setTextColor(android.graphics.Color.WHITE)
+                            textSize = 12f
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            val p = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                            layoutParams = p
+                        }
+                        titleLayout.addView(tvName)
+
+                        if (loadedTrackId == track.id) {
+                            val tvLoaded = TextView(this).apply {
+                                text = "● 已加载"
+                                setTextColor(0xFF22D3EE.toInt()) // Cyan
+                                textSize = 10f
+                                setTypeface(null, android.graphics.Typeface.BOLD)
+                            }
+                            titleLayout.addView(tvLoaded)
+                        }
+                        itemLayout.addView(titleLayout)
+
+                        // Stats lines
+                        val dateStr = sdfDate.format(java.util.Date(track.startTime))
+                        val kmStr = "%.2f km".format(item.distanceMeters / 1000f)
+                        val tvStats = TextView(this).apply {
+                            text = "时间: $dateStr\n点数: ${item.pointCount} | 距离: $kmStr"
+                            setTextColor(0xFFCBD5E1.toInt()) // Slate-300
+                            textSize = 10f
+                            setLineSpacing(2f, 1f)
+                            val p = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, (4 * density).toInt(), 0, (6 * density).toInt())
+                            }
+                            layoutParams = p
+                        }
+                        itemLayout.addView(tvStats)
+
+                        // Action Buttons
+                        val btnLayout = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+
+                        // Map show button
+                        val mapBtnText = if (loadedTrackId == track.id) "👁 隐藏" else "👁 查看"
+                        val mapBtnColor = if (loadedTrackId == track.id) 0xFF0F172A.toInt() else 0xFF22D3EE.toInt()
+                        val mapBtnBg = if (loadedTrackId == track.id) 0xFF22D3EE.toInt() else 0x1A22D3EE
+                        val mapBtn = createActionButton(mapBtnText, mapBtnColor, mapBtnBg) {
+                            toggleLoadedTrackOnMap(track)
+                        }
+                        btnLayout.addView(mapBtn)
+
+                        // Rename button
+                        val renameBtn = createActionButton("✏️ 重命名", 0xFFF59E0B.toInt(), 0x1AF59E0B) {
+                            showRenameTrackDialog(track)
+                        }
+                        btnLayout.addView(renameBtn)
+
+                        // Export button
+                        val exportBtn = createActionButton("📤 GPX", 0xFF10B981.toInt(), 0x1A10B981) {
+                            exportTrackToGpx(track)
+                        }
+                        btnLayout.addView(exportBtn)
+
+                        // Delete button
+                        val deleteBtn = createActionButton("🗑 删除", 0xFFEF4444.toInt(), 0x1AEF4444) {
+                            showDeleteTrackDialog(track)
+                        }
+                        btnLayout.addView(deleteBtn)
+
+                        itemLayout.addView(btnLayout)
+                        trackListContainer.addView(itemLayout)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing track list", e)
+            }
+        }
+    }
+
+    private fun createActionButton(text: String, textColor: Int, bgColor: Int, onClick: () -> Unit): TextView {
+        val density = resources.displayMetrics.density
+        return TextView(this).apply {
+            this.text = text
+            this.setTextColor(textColor)
+            this.textSize = 9f
+            this.gravity = android.view.Gravity.CENTER
+            this.setPadding(0, (5 * density).toInt(), 0, (5 * density).toInt())
+            
+            val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins((2 * density).toInt(), 0, (2 * density).toInt(), 0)
+            }
+            this.layoutParams = params
+            this.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = 4 * density
+            }
+            this.setOnClickListener { onClick() }
+        }
+    }
+
+    private fun toggleLoadedTrackOnMap(track: Track) {
+        if (loadedTrackId == track.id) {
+            // Toggle Off
+            loadedTrackId = null
+            synchronized(loadedTrackPoints) {
+                loadedTrackPoints.clear()
+            }
+            drawLoadedTrackOnMap()
+            refreshTrackList()
+            Toast.makeText(this, "隐藏轨迹: ${track.name ?: "未命名"}", Toast.LENGTH_SHORT).show()
+        } else {
+            // Toggle On
+            loadedTrackId = track.id
+            dbExecutor.execute {
+                val points = trackDao.getTrackPoints(track.id)
+                synchronized(loadedTrackPoints) {
+                    loadedTrackPoints.clear()
+                    loadedTrackPoints.addAll(points)
+                }
+                drawLoadedTrackOnMap()
+                runOnUiThread {
+                    refreshTrackList()
+                    Toast.makeText(this, "加载轨迹: ${track.name ?: "未命名"}", Toast.LENGTH_SHORT).show()
+                    
+                    // Auto zoom map to loaded track
+                    if (points.isNotEmpty()) {
+                        try {
+                            val boundsBuilder = com.mapbox.mapboxsdk.geometry.LatLngBounds.Builder()
+                            for (pt in points) {
+                                boundsBuilder.include(com.mapbox.mapboxsdk.geometry.LatLng(pt.latitude, pt.longitude))
+                            }
+                            mapboxMap?.easeCamera(
+                                com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 50),
+                                1500
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error fitting camera to loaded track bounds", e)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun drawLoadedTrackOnMap() {
+        val map = mapboxMap ?: return
+        val style = try { map.style } catch (e: Exception) { null } ?: return
+
+        val points = synchronized(loadedTrackPoints) {
+            loadedTrackPoints.map { Point.fromLngLat(it.longitude, it.latitude) }
+        }
+        val lineString = if (points.size >= 2) {
+            LineString.fromLngLats(points)
+        } else if (points.size == 1) {
+            LineString.fromLngLats(listOf(points[0], points[0]))
+        } else {
+            null
+        }
+
+        runOnUiThread {
+            try {
+                var source = style.getSource("loaded-track-source") as? GeoJsonSource
+                if (source == null) {
+                    source = GeoJsonSource("loaded-track-source")
+                    style.addSource(source)
+                }
+
+                if (lineString != null) {
+                    source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+                } else {
+                    source.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+                }
+
+                var layer = style.getLayer("loaded-track-layer") as? LineLayer
+                if (layer == null) {
+                    layer = LineLayer("loaded-track-layer", "loaded-track-source")
+                    layer.setProperties(
+                        PropertyFactory.lineColor(android.graphics.Color.CYAN),
+                        PropertyFactory.lineWidth(4f),
+                        PropertyFactory.lineCap(com.mapbox.mapboxsdk.style.layers.Property.LINE_CAP_ROUND),
+                        PropertyFactory.lineJoin(com.mapbox.mapboxsdk.style.layers.Property.LINE_JOIN_ROUND)
+                    )
+                    style.addLayer(layer)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error drawing loaded track on map", e)
+            }
+        }
+    }
+
+    private fun showRenameTrackDialog(track: Track) {
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+        }
+        
+        val input = EditText(this).apply {
+            setText(track.name ?: "轨迹 #${track.id}")
+            setSelectAllOnFocus(true)
+            setTextColor(android.graphics.Color.WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x13FFFFFF)
+                setStroke((1 * density).toInt(), 0x22FFFFFF)
+                cornerRadius = 4 * density
+            }
+            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+        }
+        container.addView(input)
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("重命名轨迹")
+            .setView(container)
+            .setPositiveButton("确定") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    dbExecutor.execute {
+                        track.name = newName
+                        trackDao.updateTrack(track)
+                        
+                        // Also update .track file on disk
+                        val points = trackDao.getTrackPoints(track.id)
+                        TrackFileHelper.saveTrackToJson(track, points)
+                        
+                        runOnUiThread {
+                            Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show()
+                            refreshTrackList()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDeleteTrackDialog(track: Track) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("确认删除")
+            .setMessage("确定要彻底删除轨迹“${track.name ?: "轨迹 #${track.id}"}”吗？此操作将同时清除存储卡上的关联缓存。")
+            .setPositiveButton("删除") { _, _ ->
+                dbExecutor.execute {
+                    trackDao.deleteTrackById(track.id)
+                    TrackFileHelper.deleteTrackJsonFile(track.id)
+                    
+                    if (loadedTrackId == track.id) {
+                        loadedTrackId = null
+                        synchronized(loadedTrackPoints) {
+                            loadedTrackPoints.clear()
+                        }
+                        drawLoadedTrackOnMap()
+                    }
+                    
+                    runOnUiThread {
+                        Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show()
+                        refreshTrackList()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun exportTrackToGpx(track: Track) {
+        dbExecutor.execute {
+            // 后续 GPX 导出功能必须直接读取 .track 文件生成标准 GPX
+            val trackFile = File(TrackFileHelper.getTracksDirectory(), "track_${track.id}.track")
+            val file = if (trackFile.exists()) {
+                TrackFileHelper.exportTrackFileToGpx(trackFile)
+            } else {
+                // Fallback to database
+                val points = trackDao.getTrackPoints(track.id)
+                TrackFileHelper.exportToGpx(track, points)
+            }
+            runOnUiThread {
+                if (file != null) {
+                    Toast.makeText(this, "GPX 导出成功！\n文件存放在: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "导出 GPX 失败", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun manuallySaveTrack() {
+        if (trackStatus == "STOPPED") {
+            Toast.makeText(this, "当前未在记录轨迹", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "正在将当前轨迹保存至磁盘...", Toast.LENGTH_SHORT).show()
+        dbExecutor.execute {
+            forceSaveCurrentTrackToDisk()
+            runOnUiThread {
+                Toast.makeText(this, "轨迹手动保存成功！\n文件存放在: /storage/emulated/0/CyberTrail/Tracks/", Toast.LENGTH_LONG).show()
+                refreshTrackList()
+            }
+        }
+    }
+
+    private fun forceSaveCurrentTrackToDisk() {
+        val trackId = currentTrackId
+        if (trackId == 0L) return
+
+        // 1. Save remaining pending points synchronously to DB
+        val remainingPoints = synchronized(pendingPointsToSave) {
+            val copy = ArrayList(pendingPointsToSave)
+            pendingPointsToSave.clear()
+            copy
+        }
+        
+        if (remainingPoints.isNotEmpty()) {
+            try {
+                trackDao.insertTrackPoints(remainingPoints)
+                Log.d("CYBERTRAIL_TRACK", "forceSaveCurrentTrackToDisk: Inserted ${remainingPoints.size} pending points to DB")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error inserting remaining points inside forceSaveCurrentTrackToDisk", e)
+            }
+        }
+
+        // 2. Read all points from DB and save to .track file
+        val track = trackDao.getTrackById(trackId)
+        if (track != null) {
+            track.status = trackStatus // ensure the correct status (e.g. RECORDING or PAUSED) is set
+            val allPoints = trackDao.getTrackPoints(trackId)
+            val file = TrackFileHelper.saveTrackToJson(track, allPoints)
+            if (file != null) {
+                Log.d("CYBERTRAIL_TRACK", "forceSaveCurrentTrackToDisk: Successfully force-saved track $trackId to disk: ${file.absolutePath}")
+            }
+        }
+    }
+
+    private fun calculateDistance(points: List<TrackPoint>): Float {
+        var totalDist = 0f
+        for (i in 0 until points.size - 1) {
+            val results = FloatArray(1)
+            Location.distanceBetween(
+                points[i].latitude, points[i].longitude,
+                points[i + 1].latitude, points[i + 1].longitude,
+                results
+            )
+            totalDist += results[0]
+        }
+        return totalDist
+    }
+
+    private data class TrackItemData(
+        val track: Track,
+        val pointCount: Int,
+        val distanceMeters: Float
+    )
 }

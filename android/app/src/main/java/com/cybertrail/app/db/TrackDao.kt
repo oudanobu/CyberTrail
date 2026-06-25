@@ -30,4 +30,7 @@ interface TrackDao {
 
     @Query("SELECT * FROM tracks ORDER BY id DESC")
     fun getAllTracks(): List<Track>
+
+    @Query("DELETE FROM tracks WHERE id = :trackId")
+    fun deleteTrackById(trackId: Long)
 }

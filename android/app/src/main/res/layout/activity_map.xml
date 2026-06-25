@@ -242,6 +242,25 @@
                     android:visibility="gone"
                     android:clickable="true"
                     android:focusable="true"/>
+
+                <!-- Manual Save -->
+                <TextView
+                    android:id="@+id/btn_track_save"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginLeft="4dp"
+                    android:background="@drawable/track_btn_blue_bg"
+                    android:textColor="#FF38BDF8"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:text="💾 保存"
+                    android:visibility="gone"
+                    android:clickable="true"
+                    android:focusable="true"/>
             </LinearLayout>
         </LinearLayout>
 
@@ -425,6 +444,56 @@
                     android:text="Style加载: 等待加载..."
                     android:textColor="@color/cyber_green"
                     android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Track Manager Panel (🛤️ 轨迹管理中心) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#DD0F172A"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▼ 离线轨迹与导入导出管理"
+                    android:textColor="@color/cyber_green"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Import GPX Button -->
+                <TextView
+                    android:id="@+id/btn_track_import_gpx"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#2210B981"
+                    android:textColor="@color/cyber_green"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:text="📥 导入 GPX 轨迹文件"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="历史轨迹列表:"
+                    android:textColor="@color/cyber_light_gray"
+                    android:textSize="11sp"
+                    android:layout_marginBottom="6dp" />
+
+                <!-- Dynamic Track List Container -->
+                <LinearLayout
+                    android:id="@+id/drawer_track_list_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
             </LinearLayout>
 
             <!-- Floating Draggable, scrollable, collapsible diagnostic HUD panel -->
