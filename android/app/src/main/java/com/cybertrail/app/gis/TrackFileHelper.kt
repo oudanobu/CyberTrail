@@ -41,7 +41,7 @@ object TrackFileHelper {
     /**
      * Saves a track to disk as a .track (JSON) file under CyberTrail/Tracks/
      */
-    fun saveTrackToJson(track: Track, points: List<TrackPoint>): File? {
+    fun saveTrackToJson(track: Track, points: List<TrackPoint>, photoAnchors: List<PhotoAnchor> = emptyList()): File? {
         ensureDirectories()
         try {
             val json = JSONObject()
@@ -52,8 +52,21 @@ object TrackFileHelper {
                 put("status", track.status)
                 put("name", track.name ?: JSONObject.NULL)
                 
-                // 预留扩展字段 (Reserved fields for future expansion)
-                put("photoRefs", JSONArray())
+                // Photo anchors
+                val photoArray = JSONArray()
+                for (anchor in photoAnchors) {
+                    val pJson = JSONObject().apply {
+                        put("id", anchor.id)
+                        put("trackId", anchor.trackId)
+                        put("latitude", anchor.latitude)
+                        put("longitude", anchor.longitude)
+                        put("elevation", anchor.elevation ?: JSONObject.NULL)
+                        put("timestamp", anchor.timestamp)
+                        put("photoPath", anchor.photoPath)
+                    }
+                    photoArray.put(pJson)
+                }
+                put("photoRefs", photoArray)
                 put("note", "")
                 put("waypoint", JSONArray())
                 put("sensorData", JSONObject())
@@ -87,9 +100,9 @@ object TrackFileHelper {
     }
 
     /**
-     * Reads a .track (JSON) file from disk and parses it into Track and List<TrackPoint>
+     * Reads a .track (JSON) file from disk and parses it into Track, List<TrackPoint>, and List<PhotoAnchor>
      */
-    fun readTrackFromJson(file: File): Pair<Track, List<TrackPoint>>? {
+    fun readTrackFromJson(file: File): Triple<Track, List<TrackPoint>, List<PhotoAnchor>>? {
         try {
             if (!file.exists()) return null
             val content = file.readText()
@@ -130,7 +143,33 @@ object TrackFileHelper {
                     ))
                 }
             }
-            return Pair(track, pointsList)
+
+            val photoList = mutableListOf<PhotoAnchor>()
+            if (trackJson.has("photoRefs")) {
+                val photoArray = trackJson.getJSONArray("photoRefs")
+                for (i in 0 until photoArray.length()) {
+                    val pJson = photoArray.getJSONObject(i)
+                    val pId = if (pJson.has("id")) pJson.getLong("id") else 0L
+                    val pTrackId = pJson.getLong("trackId")
+                    val latitude = pJson.getDouble("latitude")
+                    val longitude = pJson.getDouble("longitude")
+                    val elevation = if (pJson.isNull("elevation")) null else pJson.getDouble("elevation")
+                    val timestamp = pJson.getLong("timestamp")
+                    val photoPath = pJson.getString("photoPath")
+
+                    photoList.add(PhotoAnchor(
+                        id = pId,
+                        trackId = pTrackId,
+                        latitude = latitude,
+                        longitude = longitude,
+                        elevation = elevation,
+                        timestamp = timestamp,
+                        photoPath = photoPath
+                    ))
+                }
+            }
+
+            return Triple(track, pointsList, photoList)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading track from JSON file: ${file.absolutePath}", e)
             return null
@@ -173,7 +212,7 @@ object TrackFileHelper {
      */
     fun exportTrackFileToGpx(trackFile: File): File? {
         val parsed = readTrackFromJson(trackFile) ?: return null
-        return exportToGpx(parsed.first, parsed.second)
+        return exportTrack(parsed.first, parsed.second, "GPX")
     }
 
     /**
@@ -195,52 +234,270 @@ object TrackFileHelper {
      * Exports a track to standard GPX 1.1 format under CyberTrail/Export/
      */
     fun exportToGpx(track: Track, points: List<TrackPoint>): File? {
+        return exportTrack(track, points, "GPX")
+    }
+
+    /**
+     * Exports a track to GPX, KML, or JSON format under `/storage/emulated/0/CyberTrail/Tracks/`
+     * Filename format: YYYYMMDD_HHMMSS_track.<ext>
+     */
+    fun exportTrack(track: Track, points: List<TrackPoint>, format: String): File? {
         ensureDirectories()
         try {
-            val trackName = track.name ?: "Track #${track.id}"
-            val safeName = trackName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val file = File(EXPORT_PATH, "${safeName}_${track.id}.gpx")
+            val fileSdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            val timeString = fileSdf.format(Date(track.startTime))
+            val ext = format.lowercase(Locale.US)
+            val file = File(TRACKS_PATH, "${timeString}_track.$ext")
 
-            val sb = java.lang.StringBuilder()
-            sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-            sb.append("<gpx version=\"1.1\" creator=\"CyberTrail\"\n")
-            sb.append("     xmlns=\"http://www.topografix.com/GPX/1/1\"\n")
-            sb.append("     xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n")
-            sb.append("     xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\">\n")
+            when (format.uppercase(Locale.US)) {
+                "GPX" -> {
+                    val sb = java.lang.StringBuilder()
+                    sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                    sb.append("<gpx version=\"1.1\" creator=\"CyberTrail\"\n")
+                    sb.append("     xmlns=\"http://www.topografix.com/GPX/1/1\"\n")
+                    sb.append("     xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n")
+                    sb.append("     xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\">\n")
 
-            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-            sdf.timeZone = TimeZone.getTimeZone("UTC")
+                    val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
 
-            sb.append("  <metadata>\n")
-            sb.append("    <name><![CDATA[${trackName}]]></name>\n")
-            sb.append("    <time>${sdf.format(Date(track.startTime))}</time>\n")
-            sb.append("  </metadata>\n")
+                    sb.append("  <metadata>\n")
+                    sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
+                    sb.append("    <time>${sdf.format(Date(track.startTime))}</time>\n")
+                    sb.append("  </metadata>\n")
 
-            sb.append("  <trk>\n")
-            sb.append("    <name><![CDATA[${trackName}]]></name>\n")
-            sb.append("    <trkseg>\n")
+                    sb.append("  <trk>\n")
+                    sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
+                    sb.append("    <trkseg>\n")
 
-            for (pt in points) {
-                sb.append("      <trkpt lat=\"${pt.latitude}\" lon=\"${pt.longitude}\">\n")
-                if (pt.elevation != null) {
-                    sb.append("        <ele>${pt.elevation}</ele>\n")
+                    for (pt in points) {
+                        sb.append("      <trkpt lat=\"${pt.latitude}\" lon=\"${pt.longitude}\">\n")
+                        if (pt.elevation != null) {
+                            sb.append("        <ele>${pt.elevation}</ele>\n")
+                        }
+                        sb.append("        <time>${sdf.format(Date(pt.timestamp))}</time>\n")
+                        if (pt.speed > 0f) {
+                            sb.append("        <speed>${pt.speed}</speed>\n")
+                        }
+                        sb.append("      </trkpt>\n")
+                    }
+
+                    sb.append("    </trkseg>\n")
+                    sb.append("  </trk>\n")
+                    sb.append("</gpx>\n")
+
+                    file.writeText(sb.toString())
                 }
-                sb.append("        <time>${sdf.format(Date(pt.timestamp))}</time>\n")
-                if (pt.speed > 0f) {
-                    sb.append("        <speed>${pt.speed}</speed>\n")
+                "KML" -> {
+                    val sb = java.lang.StringBuilder()
+                    sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                    sb.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
+                    sb.append("  <Document>\n")
+                    sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
+                    sb.append("    <Placemark>\n")
+                    sb.append("      <name>Path</name>\n")
+                    sb.append("      <LineString>\n")
+                    sb.append("        <extrude>1</extrude>\n")
+                    sb.append("        <tessellate>1</tessellate>\n")
+                    sb.append("        <altitudeMode>clampToGround</altitudeMode>\n")
+                    sb.append("        <coordinates>\n")
+
+                    for (pt in points) {
+                        sb.append("          ${pt.longitude},${pt.latitude},${pt.elevation ?: 0.0}\n")
+                    }
+
+                    sb.append("        </coordinates>\n")
+                    sb.append("      </LineString>\n")
+                    sb.append("    </Placemark>\n")
+                    sb.append("  </Document>\n")
+                    sb.append("</kml>\n")
+
+                    file.writeText(sb.toString())
                 }
-                sb.append("      </trkpt>\n")
+                "JSON" -> {
+                    val json = JSONObject()
+                    val trackJson = JSONObject().apply {
+                        put("id", track.id)
+                        put("startTime", track.startTime)
+                        put("endTime", track.endTime ?: JSONObject.NULL)
+                        put("status", track.status)
+                        put("name", track.name ?: JSONObject.NULL)
+                    }
+                    json.put("track", trackJson)
+
+                    val pointsArray = JSONArray()
+                    for (pt in points) {
+                        val ptJson = JSONObject().apply {
+                            put("id", pt.id)
+                            put("trackId", pt.trackId)
+                            put("latitude", pt.latitude)
+                            put("longitude", pt.longitude)
+                            put("elevation", pt.elevation ?: JSONObject.NULL)
+                            put("timestamp", pt.timestamp)
+                            put("speed", pt.speed)
+                            put("accuracy", pt.accuracy)
+                        }
+                        pointsArray.put(ptJson)
+                    }
+                    json.put("points", pointsArray)
+
+                    file.writeText(json.toString(2))
+                }
             }
-
-            sb.append("    </trkseg>\n")
-            sb.append("  </trk>\n")
-            sb.append("</gpx>\n")
-
-            file.writeText(sb.toString())
-            Log.d(TAG, "Successfully exported track to GPX file: ${file.absolutePath}")
+            Log.d(TAG, "Successfully exported track to $format file: ${file.absolutePath}")
             return file
         } catch (e: Exception) {
-            Log.e(TAG, "Error exporting track to GPX", e)
+            Log.e(TAG, "Error exporting track to $format", e)
+            return null
+        }
+    }
+
+    /**
+     * Unified import function that supports importing GPX, KML, and JSON files,
+     * converting them to .track structure and inserting them into the database.
+     */
+    fun importTrackFile(file: File, trackDao: TrackDao): Track? {
+        val ext = file.extension.lowercase(Locale.US)
+        return when (ext) {
+            "gpx" -> importGpx(file, trackDao)
+            "kml" -> importKml(file, trackDao)
+            "json" -> importJson(file, trackDao)
+            else -> {
+                Log.e(TAG, "Unsupported track file format: .$ext")
+                null
+            }
+        }
+    }
+
+    /**
+     * Imports a KML file into standard local DB and autosaves as .track
+     */
+    fun importKml(kmlFile: File, trackDao: TrackDao): Track? {
+        ensureDirectories()
+        try {
+            if (!kmlFile.exists()) return null
+            val content = kmlFile.readText()
+            
+            var trackName = kmlFile.nameWithoutExtension.replace('_', ' ')
+            val nameRegex = Regex("<name>(.*?)</name>")
+            val nameMatch = nameRegex.find(content)
+            if (nameMatch != null) {
+                val parsedName = nameMatch.groupValues[1].replace("<![CDATA[", "").replace("]]>", "").trim()
+                if (parsedName.isNotEmpty() && parsedName != "Path" && parsedName != "Document") {
+                    trackName = parsedName
+                }
+            }
+
+            val coordRegex = Regex("<coordinates>([\\s\\S]*?)</coordinates>")
+            val coordMatch = coordRegex.find(content) ?: return null
+            val coordText = coordMatch.groupValues[1].trim()
+            val tokens = coordText.split(Regex("\\s+"))
+
+            val parsedPoints = mutableListOf<TempPoint>()
+            var mockTime = System.currentTimeMillis() - tokens.size * 5000L
+
+            for (token in tokens) {
+                if (token.isBlank()) continue
+                val parts = token.split(",")
+                if (parts.size >= 2) {
+                    val lon = parts[0].toDoubleOrNull() ?: continue
+                    val lat = parts[1].toDoubleOrNull() ?: continue
+                    val ele = if (parts.size >= 3) parts[2].toDoubleOrNull() else null
+                    parsedPoints.add(TempPoint(lat, lon, ele, mockTime, 0f))
+                    mockTime += 5000L
+                }
+            }
+
+            if (parsedPoints.isEmpty()) return null
+
+            val startTime = parsedPoints.first().timestamp ?: System.currentTimeMillis()
+            val endTime = parsedPoints.last().timestamp ?: System.currentTimeMillis()
+
+            val newTrack = Track(
+                startTime = startTime,
+                endTime = endTime,
+                status = "STOPPED",
+                name = trackName
+            )
+            val trackId = trackDao.insertTrack(newTrack)
+            val insertedTrack = newTrack.copy(id = trackId)
+
+            val dbPoints = parsedPoints.map {
+                TrackPoint(
+                    trackId = trackId,
+                    latitude = it.lat,
+                    longitude = it.lon,
+                    elevation = it.ele,
+                    timestamp = it.timestamp ?: System.currentTimeMillis(),
+                    speed = it.speed,
+                    accuracy = 5f
+                )
+            }
+            trackDao.insertTrackPoints(dbPoints)
+
+            // Auto-save completion
+            saveTrackToJson(insertedTrack, dbPoints)
+            return insertedTrack
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing KML file", e)
+            return null
+        }
+    }
+
+    /**
+     * Imports a JSON file into standard local DB and autosaves as .track
+     */
+    fun importJson(jsonFile: File, trackDao: TrackDao): Track? {
+        ensureDirectories()
+        try {
+            if (!jsonFile.exists()) return null
+            val content = jsonFile.readText()
+            val json = JSONObject(content)
+            
+            val trackJson = json.getJSONObject("track")
+            val startTime = trackJson.getLong("startTime")
+            val endTime = if (trackJson.isNull("endTime")) null else trackJson.getLong("endTime")
+            val name = if (trackJson.isNull("name")) null else trackJson.getString("name")
+
+            val newTrack = Track(
+                startTime = startTime,
+                endTime = endTime,
+                status = "STOPPED",
+                name = name
+            )
+            val trackId = trackDao.insertTrack(newTrack)
+            val insertedTrack = newTrack.copy(id = trackId)
+
+            val dbPoints = mutableListOf<TrackPoint>()
+            if (json.has("points")) {
+                val pointsArray = json.getJSONArray("points")
+                for (i in 0 until pointsArray.length()) {
+                    val ptJson = pointsArray.getJSONObject(i)
+                    val latitude = ptJson.getDouble("latitude")
+                    val longitude = ptJson.getDouble("longitude")
+                    val elevation = if (ptJson.isNull("elevation")) null else ptJson.getDouble("elevation")
+                    val timestamp = ptJson.getLong("timestamp")
+                    val speed = ptJson.optDouble("speed", 0.0).toFloat()
+                    val accuracy = ptJson.optDouble("accuracy", 5.0).toFloat()
+
+                    dbPoints.add(TrackPoint(
+                        trackId = trackId,
+                        latitude = latitude,
+                        longitude = longitude,
+                        elevation = elevation,
+                        timestamp = timestamp,
+                        speed = speed,
+                        accuracy = accuracy
+                    ))
+                }
+            }
+            trackDao.insertTrackPoints(dbPoints)
+
+            // Auto-save completion
+            saveTrackToJson(insertedTrack, dbPoints)
+            return insertedTrack
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing JSON file", e)
             return null
         }
     }

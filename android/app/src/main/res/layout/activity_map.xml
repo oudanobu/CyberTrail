@@ -264,6 +264,29 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Camera Button 📷 拍照 -->
+        <TextView
+            android:id="@+id/btn_camera"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_above="@id/btn_locate"
+            android:layout_marginRight="16dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/locate_btn_bg"
+            android:textColor="@color/cyber_green"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingLeft="18dp"
+            android:paddingRight="18dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
+            android:text="📷 拍照"
+            android:gravity="center"
+            android:elevation="12dp"
+            android:clickable="true"
+            android:focusable="true"/>
+
         <!-- Locate Button ◎ 定位 -->
         <TextView
             android:id="@+id/btn_locate"

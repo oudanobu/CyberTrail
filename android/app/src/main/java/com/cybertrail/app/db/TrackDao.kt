@@ -33,4 +33,10 @@ interface TrackDao {
 
     @Query("DELETE FROM tracks WHERE id = :trackId")
     fun deleteTrackById(trackId: Long)
+
+    @Insert
+    fun insertPhotoAnchor(photoAnchor: PhotoAnchor): Long
+
+    @Query("SELECT * FROM photo_anchors WHERE trackId = :trackId ORDER BY timestamp ASC")
+    fun getPhotoAnchorsForTrack(trackId: Long): List<PhotoAnchor>
 }

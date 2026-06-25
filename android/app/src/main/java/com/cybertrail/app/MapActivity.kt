@@ -49,6 +49,7 @@ import com.cybertrail.app.db.AppDatabase
 import com.cybertrail.app.db.Track
 import com.cybertrail.app.db.TrackPoint
 import com.cybertrail.app.db.TrackDao
+import com.cybertrail.app.db.PhotoAnchor
 import java.util.concurrent.Executors
 import android.os.Handler
 import android.os.Looper
@@ -154,6 +155,19 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var loadedTrackId: Long? = null
     private val loadedTrackPoints = mutableListOf<TrackPoint>()
     private var lastDiskSaveTime: Long = 0L
+
+    private lateinit var btnCamera: View
+    private var photoFile: File? = null
+
+    private val takePictureLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && photoFile != null) {
+            savePhotoAnchor(photoFile!!)
+        } else {
+            Toast.makeText(this, "拍照取消", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private val importGpxLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -271,11 +285,16 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
         tvPanelSpeed = findViewById(R.id.tv_panel_speed)
         tvPanelBearing = findViewById(R.id.tv_panel_bearing)
         btnLocate = findViewById(R.id.btn_locate)
+        btnCamera = findViewById(R.id.btn_camera)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         btnLocate.setOnClickListener {
             performLocateAction()
+        }
+
+        btnCamera.setOnClickListener {
+            checkCameraPermissionAndLaunch()
         }
 
         hudElevation = findViewById(R.id.hud_elevation)
@@ -569,6 +588,25 @@ ${finalStyleJsonString ?: "None"}
         this.mapboxMap = map
         hudStyleStatus.text = "Style加载: 正在建立本地地图渲染器..."
 
+        map.setOnMarkerClickListener { marker ->
+            val activeId = loadedTrackId ?: currentTrackId
+            if (activeId != 0L) {
+                dbExecutor.execute {
+                    val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
+                    val matchingAnchor = anchors.find {
+                        Math.abs(it.latitude - marker.position.latitude) < 0.0001 &&
+                        Math.abs(it.longitude - marker.position.longitude) < 0.0001
+                    }
+                    if (matchingAnchor != null) {
+                        runOnUiThread {
+                            showPhotoAnchorDialog(matchingAnchor)
+                        }
+                    }
+                }
+            }
+            true
+        }
+
         map.addOnMapClickListener {
             Log.d("CYBERTRAIL_MAP", "Map clicked")
             false
@@ -577,6 +615,8 @@ ${finalStyleJsonString ?: "None"}
         map.addOnCameraIdleListener {
             Log.d("CYBERTRAIL_MAP", "Map idle")
         }
+
+        drawPhotoAnchorsOnMap()
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
         val mapsDirUpper = java.io.File(baseDir, "Maps")
@@ -2410,6 +2450,7 @@ ${finalStyleJsonString ?: "None"}
                 if (parsed != null) {
                     val track = parsed.first
                     val points = parsed.second
+                    val photoAnchors = parsed.third
                     
                     runOnUiThread {
                         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -2423,6 +2464,9 @@ ${finalStyleJsonString ?: "None"}
                                     if (existing == null) {
                                         trackDao.insertTrack(track)
                                         trackDao.insertTrackPoints(points)
+                                        for (anchor in photoAnchors) {
+                                            trackDao.insertPhotoAnchor(anchor)
+                                        }
                                     } else {
                                         existing.status = track.status
                                         trackDao.updateTrack(existing)
@@ -2440,6 +2484,7 @@ ${finalStyleJsonString ?: "None"}
 
                                         updateTrackUi()
                                         drawTrackOnMap()
+                                        drawPhotoAnchorsOnMap()
 
                                         // Restart background runnables
                                         mainHandler.removeCallbacks(saveRunnable)
@@ -2957,6 +3002,191 @@ ${finalStyleJsonString ?: "None"}
         }
     }
 
+    private val photoMarkers = mutableListOf<com.mapbox.mapboxsdk.annotations.Marker>()
+
+    private fun checkCameraPermissionAndLaunch() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1002)
+        } else {
+            launchCamera()
+        }
+    }
+
+    private fun launchCamera() {
+        try {
+            val storageDir = File("/storage/emulated/0/CyberTrail/Photos")
+            if (!storageDir.exists()) {
+                storageDir.mkdirs()
+            }
+            val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+            val file = File(storageDir, "photo_${timeStamp}.jpg")
+            photoFile = file
+            
+            val authority = "com.cybertrail.app.fileprovider"
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, authority, file)
+            
+            takePictureLauncher.launch(uri)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch camera", e)
+            Toast.makeText(this, "启动相机失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun savePhotoAnchor(file: File) {
+        val activeId = currentTrackId
+        if (activeId == 0L) {
+            Toast.makeText(this, "未在记录轨迹中，照片已保存至本地，但未绑定轨迹", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val lat = lastGpsLatitude ?: 0.0
+        val lon = lastGpsLongitude ?: 0.0
+        val alt = lastGpsAltitude
+        val time = System.currentTimeMillis()
+
+        if (lat == 0.0 && lon == 0.0) {
+            Toast.makeText(this, "暂无 GPS 信号，无法创建照片锚点", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        dbExecutor.execute {
+            val anchor = PhotoAnchor(
+                trackId = activeId,
+                latitude = lat,
+                longitude = lon,
+                elevation = alt,
+                timestamp = time,
+                photoPath = file.absolutePath
+            )
+            trackDao.insertPhotoAnchor(anchor)
+            
+            // Sync current track to disk immediately
+            val track = trackDao.getTrackById(activeId)
+            val points = trackDao.getTrackPoints(activeId)
+            val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
+            if (track != null) {
+                TrackFileHelper.saveTrackToJson(track, points, anchors)
+            }
+
+            runOnUiThread {
+                Toast.makeText(this, "📷 照片锚点记录成功！", Toast.LENGTH_SHORT).show()
+                drawPhotoAnchorsOnMap()
+            }
+        }
+    }
+
+    private fun drawPhotoAnchorsOnMap() {
+        val map = mapboxMap ?: return
+        runOnUiThread {
+            try {
+                // Clear existing markers
+                for (marker in photoMarkers) {
+                    map.removeMarker(marker)
+                }
+                photoMarkers.clear()
+
+                val activeId = loadedTrackId ?: currentTrackId
+                if (activeId != 0L) {
+                    dbExecutor.execute {
+                        val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
+                        runOnUiThread {
+                            for (anchor in anchors) {
+                                val markerOptions = com.mapbox.mapboxsdk.annotations.MarkerOptions()
+                                    .position(com.mapbox.mapboxsdk.geometry.LatLng(anchor.latitude, anchor.longitude))
+                                    .title("📷 照片锚点")
+                                    .snippet("点击查看照片")
+                                val marker = map.addMarker(markerOptions)
+                                photoMarkers.add(marker)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error drawing photo anchors on map", e)
+            }
+        }
+    }
+
+    private fun showPhotoAnchorDialog(anchor: PhotoAnchor) {
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .create()
+
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xE60F172A.toInt()) // Cyber slate transparent dark
+                setStroke((1 * density).toInt(), 0xFF10B981.toInt()) // Cyber green border
+                cornerRadius = 8 * density
+            }
+        }
+
+        val tvTitle = TextView(this).apply {
+            text = "📷 户外照片锚点"
+            setTextColor(0xFF10B981.toInt()) // Cyber green
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, (12 * density).toInt())
+        }
+        container.addView(tvTitle)
+
+        val imageView = android.widget.ImageView(this).apply {
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (240 * density).toInt()
+            ).apply {
+                setMargins(0, 0, 0, (12 * density).toInt())
+            }
+            layoutParams = params
+            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            
+            val file = File(anchor.photoPath)
+            if (file.exists()) {
+                val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                setImageBitmap(bitmap)
+            } else {
+                setImageResource(android.R.drawable.ic_menu_gallery)
+            }
+        }
+        container.addView(imageView)
+
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        val dateStr = sdf.format(java.util.Date(anchor.timestamp))
+        val eleStr = if (anchor.elevation != null) "%.1f m".format(anchor.elevation) else "无"
+
+        val tvMeta = TextView(this).apply {
+            text = "时间: $dateStr\n经度: ${anchor.longitude}\n纬度: ${anchor.latitude}\n海拔: $eleStr\n路径: ${anchor.photoPath}"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 11f
+            fontFamily = "monospace"
+            setLineSpacing(4f, 1f)
+            setPadding(0, 0, 0, (16 * density).toInt())
+        }
+        container.addView(tvMeta)
+
+        val btnClose = TextView(this).apply {
+            text = "关闭"
+            setTextColor(0xFF0F172A.toInt())
+            textSize = 12f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF10B981.toInt()) // Cyber green
+                cornerRadius = 4 * density
+            }
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+        container.addView(btnClose)
+
+        dialog.setView(container)
+        dialog.show()
+    }
+
     private fun toggleLoadedTrackOnMap(track: Track) {
         if (loadedTrackId == track.id) {
             // Toggle Off
@@ -2965,6 +3195,7 @@ ${finalStyleJsonString ?: "None"}
                 loadedTrackPoints.clear()
             }
             drawLoadedTrackOnMap()
+            drawPhotoAnchorsOnMap()
             refreshTrackList()
             Toast.makeText(this, "隐藏轨迹: ${track.name ?: "未命名"}", Toast.LENGTH_SHORT).show()
         } else {
@@ -2977,6 +3208,7 @@ ${finalStyleJsonString ?: "None"}
                     loadedTrackPoints.addAll(points)
                 }
                 drawLoadedTrackOnMap()
+                drawPhotoAnchorsOnMap()
                 runOnUiThread {
                     refreshTrackList()
                     Toast.makeText(this, "加载轨迹: ${track.name ?: "未命名"}", Toast.LENGTH_SHORT).show()
