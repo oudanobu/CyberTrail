@@ -38,6 +38,20 @@ import com.mapbox.mapboxsdk.location.LocationComponent
 import com.mapbox.mapboxsdk.location.LocationComponentActivationOptions
 import com.mapbox.mapboxsdk.location.modes.CameraMode
 import com.mapbox.mapboxsdk.location.modes.RenderMode
+import com.mapbox.geojson.Feature
+import com.mapbox.geojson.FeatureCollection
+import com.mapbox.geojson.LineString
+import com.mapbox.geojson.Point
+import com.mapbox.mapboxsdk.style.layers.LineLayer
+import com.mapbox.mapboxsdk.style.layers.PropertyFactory
+import com.mapbox.mapboxsdk.style.sources.GeoJsonSource
+import com.cybertrail.app.db.AppDatabase
+import com.cybertrail.app.db.Track
+import com.cybertrail.app.db.TrackPoint
+import com.cybertrail.app.db.TrackDao
+import java.util.concurrent.Executors
+import android.os.Handler
+import android.os.Looper
 import java.io.File
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
@@ -110,6 +124,42 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var tvPanelSpeed: TextView
     private lateinit var tvPanelBearing: TextView
     private lateinit var btnLocate: View
+
+    // Track Recording System Properties
+    private lateinit var trackDao: TrackDao
+    private val dbExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var currentTrackId: Long = 0L
+    private val currentTrackPoints = mutableListOf<TrackPoint>()
+    private val pendingPointsToSave = mutableListOf<TrackPoint>()
+    private var trackStatus: String = "STOPPED" // "RECORDING", "PAUSED", "STOPPED"
+    private var trackStartTime: Long = 0L
+    private var trackTotalSeconds: Long = 0L
+
+    private lateinit var tvTrackStatus: TextView
+    private lateinit var tvTrackStats: TextView
+    private lateinit var btnTrackStart: View
+    private lateinit var btnTrackPause: View
+    private lateinit var btnTrackResume: View
+    private lateinit var btnTrackStop: View
+
+    private val trackSaveIntervalMs = 10000L
+    private val saveRunnable = object : Runnable {
+        override fun run() {
+            savePendingPoints()
+            mainHandler.postDelayed(this, trackSaveIntervalMs)
+        }
+    }
+
+    private val durationRunnable = object : Runnable {
+        override fun run() {
+            if (trackStatus == "RECORDING") {
+                trackTotalSeconds++
+                updateTrackStatsUi()
+            }
+            mainHandler.postDelayed(this, 1000L)
+        }
+    }
 
     companion object {
         private const val TAG = "MapActivity"
@@ -419,6 +469,7 @@ ${finalStyleJsonString ?: "None"}
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
+        initTrackRecording()
         runOfflineDiagnostics()
         startGpsTracking()
     }
@@ -998,6 +1049,9 @@ ${finalStyleJsonString ?: "None"}
         updateTerrainHud(lat, lon)
         updateDiagnosticHud()
 
+        // Record Track Point
+        recordLocationPoint(location)
+
         mapboxMap?.let { map ->
             try {
                 if (map.locationComponent.isLocationComponentEnabled) {
@@ -1083,6 +1137,9 @@ ${finalStyleJsonString ?: "None"}
         updateTerrainHud(lat, lon)
         updateDiagnosticHud()
 
+        // Record Track Point
+        recordLocationPoint(location)
+
         mapboxMap?.let { map ->
             try {
                 val cameraUpdate = com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngZoom(
@@ -1163,6 +1220,13 @@ ${finalStyleJsonString ?: "None"}
         mapView.onResume()
         Log.d("CYBERTRAIL_MAP", "MapView onResume")
         startGpsTracking()
+        
+        if (trackStatus == "RECORDING" || trackStatus == "PAUSED") {
+            mainHandler.removeCallbacks(saveRunnable)
+            mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+            mainHandler.removeCallbacks(durationRunnable)
+            mainHandler.post(durationRunnable)
+        }
     }
 
     override fun onPause() {
@@ -1170,6 +1234,10 @@ ${finalStyleJsonString ?: "None"}
         mapView.onPause()
         Log.d("CYBERTRAIL_MAP", "MapView onPause")
         locationManager.removeUpdates(this)
+        
+        mainHandler.removeCallbacks(saveRunnable)
+        mainHandler.removeCallbacks(durationRunnable)
+        savePendingPoints()
     }
 
     override fun onStop() {
@@ -1225,6 +1293,9 @@ ${finalStyleJsonString ?: "None"}
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enable LocationComponent: ${e.message}", e)
         }
+        
+        // Also draw any restored track line when map style is loaded
+        drawTrackOnMap()
     }
 
     private fun updateDiagnosticHud() {
@@ -2256,6 +2327,293 @@ ${finalStyleJsonString ?: "None"}
             isHudExpanded = true
             updateDiagnosticHud()
             android.widget.Toast.makeText(this@MapActivity, "MBTiles Scan Done!", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun initTrackRecording() {
+        trackDao = AppDatabase.getDatabase(this).trackDao()
+
+        tvTrackStatus = findViewById(R.id.tv_track_status)
+        tvTrackStats = findViewById(R.id.tv_track_stats)
+        btnTrackStart = findViewById(R.id.btn_track_start)
+        btnTrackPause = findViewById(R.id.btn_track_pause)
+        btnTrackResume = findViewById(R.id.btn_track_resume)
+        btnTrackStop = findViewById(R.id.btn_track_stop)
+
+        btnTrackStart.setOnClickListener { startRecordingTrack() }
+        btnTrackPause.setOnClickListener { pauseRecordingTrack() }
+        btnTrackResume.setOnClickListener { resumeRecordingTrack() }
+        btnTrackStop.setOnClickListener { stopRecordingTrack() }
+
+        // Restore track on startup
+        dbExecutor.execute {
+            val activeTrack = trackDao.getActiveTrack()
+            if (activeTrack != null) {
+                val points = trackDao.getTrackPoints(activeTrack.id)
+                runOnUiThread {
+                    currentTrackId = activeTrack.id
+                    trackStatus = activeTrack.status
+                    trackStartTime = activeTrack.startTime
+                    // calculate elapsed time
+                    trackTotalSeconds = (System.currentTimeMillis() - activeTrack.startTime) / 1000L
+                    if (trackTotalSeconds < 0) trackTotalSeconds = 0L
+
+                    currentTrackPoints.clear()
+                    currentTrackPoints.addAll(points)
+
+                    Log.d("CYBERTRAIL_TRACK", "Restored active track ID $currentTrackId with ${points.size} points. Status: $trackStatus")
+                    Toast.makeText(this, "检测到未完成轨迹，已自动恢复记录", Toast.LENGTH_SHORT).show()
+
+                    updateTrackUi()
+                    drawTrackOnMap()
+
+                    // Restart background runnables
+                    mainHandler.removeCallbacks(saveRunnable)
+                    mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+
+                    mainHandler.removeCallbacks(durationRunnable)
+                    mainHandler.post(durationRunnable)
+                }
+            }
+        }
+    }
+
+    private fun startRecordingTrack() {
+        if (trackStatus != "STOPPED") return
+
+        val startTime = System.currentTimeMillis()
+        val newTrack = Track(startTime = startTime, status = "RECORDING")
+
+        dbExecutor.execute {
+            val id = trackDao.insertTrack(newTrack)
+            runOnUiThread {
+                currentTrackId = id
+                trackStatus = "RECORDING"
+                trackStartTime = startTime
+                trackTotalSeconds = 0L
+                currentTrackPoints.clear()
+                pendingPointsToSave.clear()
+
+                Toast.makeText(this, "开始记录轨迹", Toast.LENGTH_SHORT).show()
+
+                updateTrackUi()
+                drawTrackOnMap()
+
+                // Start periodic save
+                mainHandler.removeCallbacks(saveRunnable)
+                mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+
+                // Start duration timer
+                mainHandler.removeCallbacks(durationRunnable)
+                mainHandler.post(durationRunnable)
+            }
+        }
+    }
+
+    private fun pauseRecordingTrack() {
+        if (trackStatus != "RECORDING") return
+
+        val trackId = currentTrackId
+        dbExecutor.execute {
+            val track = trackDao.getTrackById(trackId)
+            if (track != null) {
+                track.status = "PAUSED"
+                trackDao.updateTrack(track)
+                
+                // Save any pending points before pausing
+                savePendingPoints()
+
+                runOnUiThread {
+                    trackStatus = "PAUSED"
+                    Toast.makeText(this, "轨迹记录已暂停", Toast.LENGTH_SHORT).show()
+                    updateTrackUi()
+                }
+            }
+        }
+    }
+
+    private fun resumeRecordingTrack() {
+        if (trackStatus != "PAUSED") return
+
+        val trackId = currentTrackId
+        dbExecutor.execute {
+            val track = trackDao.getTrackById(trackId)
+            if (track != null) {
+                track.status = "RECORDING"
+                trackDao.updateTrack(track)
+
+                runOnUiThread {
+                    trackStatus = "RECORDING"
+                    Toast.makeText(this, "恢复轨迹记录", Toast.LENGTH_SHORT).show()
+                    updateTrackUi()
+                }
+            }
+        }
+    }
+
+    private fun stopRecordingTrack() {
+        if (trackStatus == "STOPPED") return
+
+        val trackId = currentTrackId
+        val endTime = System.currentTimeMillis()
+        dbExecutor.execute {
+            val track = trackDao.getTrackById(trackId)
+            if (track != null) {
+                track.status = "STOPPED"
+                track.endTime = endTime
+                trackDao.updateTrack(track)
+
+                // Save remaining pending points
+                savePendingPoints()
+
+                runOnUiThread {
+                    trackStatus = "STOPPED"
+                    Toast.makeText(this, "轨迹记录已停止，已成功保存", Toast.LENGTH_LONG).show()
+                    
+                    // Stop runnables
+                    mainHandler.removeCallbacks(saveRunnable)
+                    
+                    // Update final UI
+                    tvTrackStatus.text = "🛤️ 轨迹: 已结束"
+                    btnTrackStart.visibility = View.VISIBLE
+                    btnTrackPause.visibility = View.GONE
+                    btnTrackResume.visibility = View.GONE
+                    btnTrackStop.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private fun savePendingPoints() {
+        val pointsToInsert = synchronized(pendingPointsToSave) {
+            val copy = ArrayList(pendingPointsToSave)
+            pendingPointsToSave.clear()
+            copy
+        }
+
+        if (pointsToInsert.isNotEmpty()) {
+            dbExecutor.execute {
+                try {
+                    trackDao.insertTrackPoints(pointsToInsert)
+                    Log.d("CYBERTRAIL_TRACK", "Successfully saved ${pointsToInsert.size} track points to database.")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error saving track points to DB", e)
+                }
+            }
+        }
+    }
+
+    private fun recordLocationPoint(location: Location) {
+        if (trackStatus != "RECORDING") return
+
+        val tp = TrackPoint(
+            trackId = currentTrackId,
+            latitude = location.latitude,
+            longitude = location.longitude,
+            elevation = if (location.hasAltitude()) location.altitude else null,
+            timestamp = location.time,
+            speed = if (location.hasSpeed()) location.speed else 0f,
+            accuracy = if (location.hasAccuracy()) location.accuracy else 0f
+        )
+
+        synchronized(currentTrackPoints) {
+            currentTrackPoints.add(tp)
+        }
+
+        synchronized(pendingPointsToSave) {
+            pendingPointsToSave.add(tp)
+        }
+
+        drawTrackOnMap()
+        updateTrackStatsUi()
+    }
+
+    private fun drawTrackOnMap() {
+        val map = mapboxMap ?: return
+        val style = try { map.style } catch (e: Exception) { null } ?: return
+
+        val points = synchronized(currentTrackPoints) {
+            currentTrackPoints.map { Point.fromLngLat(it.longitude, it.latitude) }
+        }
+        val lineString = if (points.size >= 2) {
+            LineString.fromLngLats(points)
+        } else if (points.size == 1) {
+            LineString.fromLngLats(listOf(points[0], points[0]))
+        } else {
+            null
+        }
+
+        runOnUiThread {
+            try {
+                var source = style.getSource("track-source") as? GeoJsonSource
+                if (source == null) {
+                    source = GeoJsonSource("track-source")
+                    style.addSource(source)
+                }
+
+                if (lineString != null) {
+                    source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+                } else {
+                    source.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+                }
+
+                var layer = style.getLayer("track-layer") as? LineLayer
+                if (layer == null) {
+                    layer = LineLayer("track-layer", "track-source")
+                    layer.setProperties(
+                        PropertyFactory.lineColor(android.graphics.Color.RED),
+                        PropertyFactory.lineWidth(4f),
+                        PropertyFactory.lineCap(com.mapbox.mapboxsdk.style.layers.Property.LINE_CAP_ROUND),
+                        PropertyFactory.lineJoin(com.mapbox.mapboxsdk.style.layers.Property.LINE_JOIN_ROUND)
+                    )
+                    style.addLayer(layer)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error drawing track on map", e)
+            }
+        }
+    }
+
+    private fun updateTrackUi() {
+        runOnUiThread {
+            when (trackStatus) {
+                "STOPPED" -> {
+                    tvTrackStatus.text = "🛤️ 轨迹: 停止记录"
+                    tvTrackStatus.setTextColor(0xFF94A3B8.toInt())
+                    btnTrackStart.visibility = View.VISIBLE
+                    btnTrackPause.visibility = View.GONE
+                    btnTrackResume.visibility = View.GONE
+                    btnTrackStop.visibility = View.GONE
+                }
+                "RECORDING" -> {
+                    tvTrackStatus.text = "🛤️ 轨迹: ● 正在记录"
+                    tvTrackStatus.setTextColor(0xFFEF4444.toInt())
+                    btnTrackStart.visibility = View.GONE
+                    btnTrackPause.visibility = View.VISIBLE
+                    btnTrackResume.visibility = View.GONE
+                    btnTrackStop.visibility = View.VISIBLE
+                }
+                "PAUSED" -> {
+                    tvTrackStatus.text = "🛤️ 轨迹: ⏸ 已暂停"
+                    tvTrackStatus.setTextColor(0xFFF59E0B.toInt())
+                    btnTrackStart.visibility = View.GONE
+                    btnTrackPause.visibility = View.GONE
+                    btnTrackResume.visibility = View.VISIBLE
+                    btnTrackStop.visibility = View.VISIBLE
+                }
+            }
+            updateTrackStatsUi()
+        }
+    }
+
+    private fun updateTrackStatsUi() {
+        runOnUiThread {
+            val pointCount = synchronized(currentTrackPoints) { currentTrackPoints.size }
+            val hrs = trackTotalSeconds / 3600
+            val mins = (trackTotalSeconds % 3600) / 60
+            val secs = trackTotalSeconds % 60
+            val timeStr = "%02d:%02d:%02d".format(hrs, mins, secs)
+            tvTrackStats.text = "点数: $pointCount | 时间: $timeStr"
         }
     }
 }
