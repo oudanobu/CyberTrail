@@ -5,6 +5,7 @@ import android.util.Log
 import com.cybertrail.app.db.Track
 import com.cybertrail.app.db.TrackPoint
 import com.cybertrail.app.db.TrackDao
+import com.cybertrail.app.db.PhotoAnchor
 import org.json.JSONArray
 import org.json.JSONObject
 import org.w3c.dom.Element

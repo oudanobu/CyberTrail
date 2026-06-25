@@ -3160,7 +3160,7 @@ ${finalStyleJsonString ?: "None"}
             text = "时间: $dateStr\n经度: ${anchor.longitude}\n纬度: ${anchor.latitude}\n海拔: $eleStr\n路径: ${anchor.photoPath}"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 11f
-            fontFamily = "monospace"
+            typeface = android.graphics.Typeface.MONOSPACE
             setLineSpacing(4f, 1f)
             setPadding(0, 0, 0, (16 * density).toInt())
         }
