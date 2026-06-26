@@ -7,13 +7,12 @@ import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
 
-class LocalTileServer(val mbtilesPath: String) {
+class LocalTileServer(val mbtilesPath: String, val port: Int = 8080) {
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
     private val TAG = "LocalTileServer"
     private val dbsMap = java.util.concurrent.ConcurrentHashMap<String, SQLiteDatabase>()
     private val formatsMap = java.util.concurrent.ConcurrentHashMap<String, String>()
-    val port = 8080
 
     var onTileRequest: (() -> Unit)? = null
     var onTileFound: (() -> Unit)? = null

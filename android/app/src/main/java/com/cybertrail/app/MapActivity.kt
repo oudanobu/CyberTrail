@@ -2547,6 +2547,11 @@ ${finalStyleJsonString ?: "None"}
 
         // Bind Track Manager UI
         trackListContainer = findViewById(R.id.drawer_track_list_container)
+        val btnOpenTrackManager: TextView = findViewById(R.id.btn_open_track_manager)
+        btnOpenTrackManager.setOnClickListener {
+            val intent = Intent(this, TrackManagerActivity::class.java)
+            startActivity(intent)
+        }
         btnTrackImportGpx = findViewById(R.id.btn_track_import_gpx)
         btnTrackImportGpx.setOnClickListener {
             try {

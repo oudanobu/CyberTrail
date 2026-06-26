@@ -19,7 +19,7 @@ object TrackFileHelper {
     private const val TAG = "TrackFileHelper"
     private const val BASE_PATH = "/storage/emulated/0/CyberTrail"
     private const val TRACKS_PATH = "$BASE_PATH/Tracks"
-    private const val EXPORT_PATH = "$BASE_PATH/Export"
+    private const val EXPORT_PATH = "$BASE_PATH/Exports"
     private const val PHOTOS_PATH = "$BASE_PATH/Photos"
     private const val THUMBNAILS_PATH = "$PHOTOS_PATH/thumbnails"
 

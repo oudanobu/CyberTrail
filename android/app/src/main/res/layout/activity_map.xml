@@ -772,6 +772,22 @@
                         android:buttonTint="@color/cyber_green" />
                 </LinearLayout>
 
+                <!-- Track Manager Entry Button -->
+                <TextView
+                    android:id="@+id/btn_open_track_manager"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#2222D3EE"
+                    android:textColor="#22D3EE"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:text="📂 轨迹管理"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
                 <!-- Import GPX Button -->
                 <TextView
                     android:id="@+id/btn_track_import_gpx"

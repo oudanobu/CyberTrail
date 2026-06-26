@@ -46,6 +46,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".TrackManagerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TrackDetailActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".offline.OfflineMapActivity"
             android:exported="false" />
 

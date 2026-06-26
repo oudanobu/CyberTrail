@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/cyber_dark_gray"
+    android:padding="10dp">
+
+    <TextView
+        android:id="@+id/tv_stat_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="指标"
+        android:textColor="@color/cyber_light_gray"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/tv_stat_value"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="--"
+        android:textColor="@color/cyber_green"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginTop="4dp"
+        android:singleLine="true"
+        android:ellipsize="end" />
+</LinearLayout>
