@@ -3352,7 +3352,7 @@ ${finalStyleJsonString ?: "None"}
         val btnViewOriginal = TextView(this).apply {
             text = "🔎 原图"
             setTextColor(0xFF0F172A.toInt())
-            textSize = 11sp
+            textSize = 11f
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
             setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
@@ -3372,7 +3372,7 @@ ${finalStyleJsonString ?: "None"}
         val btnEditNote = TextView(this).apply {
             text = "✏️ 备注"
             setTextColor(0xFF0F172A.toInt())
-            textSize = 11sp
+            textSize = 11f
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
             setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
@@ -3392,7 +3392,7 @@ ${finalStyleJsonString ?: "None"}
         val btnDelete = TextView(this).apply {
             text = "🗑 删除"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 11sp
+            textSize = 11f
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
             setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
@@ -3412,7 +3412,7 @@ ${finalStyleJsonString ?: "None"}
         val btnClose = TextView(this).apply {
             text = "✖ 关闭"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 11sp
+            textSize = 11f
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
             setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
