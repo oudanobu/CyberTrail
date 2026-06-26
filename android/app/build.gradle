@@ -52,6 +52,9 @@ dependencies {
     kapt 'androidx.room:room-compiler:2.6.1'
     implementation 'androidx.room:room-ktx:2.6.1'
 
+    // EXIF Interface for Photo Metadata
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20231013'

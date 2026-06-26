@@ -59,6 +59,10 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import com.cybertrail.app.gis.TrackFileHelper
 import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Dialog
+import android.view.GestureDetector
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
@@ -166,6 +170,23 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
             savePhotoAnchor(photoFile!!)
         } else {
             Toast.makeText(this, "拍照取消", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private lateinit var btnPhotoImport: View
+    private lateinit var cbLayerTrack: android.widget.CheckBox
+    private lateinit var cbLayerWaypoint: android.widget.CheckBox
+    private lateinit var cbLayerPhoto: android.widget.CheckBox
+
+    private var isTrackLayerEnabled = true
+    private var isWaypointLayerEnabled = true
+    private var isPhotoLayerEnabled = true
+
+    private val photoImportLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            importPhotoFromUri(uri)
         }
     }
 
@@ -590,17 +611,19 @@ ${finalStyleJsonString ?: "None"}
 
         map.setOnMarkerClickListener { marker ->
             val activeId = loadedTrackId ?: currentTrackId
-            if (activeId != 0L) {
-                dbExecutor.execute {
-                    val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
-                    val matchingAnchor = anchors.find {
-                        Math.abs(it.latitude - marker.position.latitude) < 0.0001 &&
-                        Math.abs(it.longitude - marker.position.longitude) < 0.0001
-                    }
-                    if (matchingAnchor != null) {
-                        runOnUiThread {
-                            showPhotoAnchorDialog(matchingAnchor)
-                        }
+            dbExecutor.execute {
+                val anchors = if (activeId != 0L) {
+                    trackDao.getPhotoAnchorsForTrack(activeId)
+                } else {
+                    trackDao.getAllPhotoAnchors()
+                }
+                val matchingAnchor = anchors.find {
+                    Math.abs(it.latitude - marker.position.latitude) < 0.0001 &&
+                    Math.abs(it.longitude - marker.position.longitude) < 0.0001
+                }
+                if (matchingAnchor != null) {
+                    runOnUiThread {
+                        showPhotoAnchorDialog(matchingAnchor)
                     }
                 }
             }
@@ -2438,6 +2461,46 @@ ${finalStyleJsonString ?: "None"}
             }
         }
 
+        btnPhotoImport = findViewById(R.id.btn_photo_import)
+        btnPhotoImport.setOnClickListener {
+            try {
+                photoImportLauncher.launch("image/*")
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法启动照片选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        cbLayerTrack = findViewById(R.id.cb_layer_track)
+        cbLayerWaypoint = findViewById(R.id.cb_layer_waypoint)
+        cbLayerPhoto = findViewById(R.id.cb_layer_photo)
+
+        cbLayerTrack.setOnCheckedChangeListener { _, isChecked ->
+            isTrackLayerEnabled = isChecked
+            mapboxMap?.let { map ->
+                try {
+                    val style = map.style
+                    if (style != null) {
+                        val trackL = style.getLayer("track-layer")
+                        val loadedTrackL = style.getLayer("loaded-track-layer")
+                        val vis = if (isChecked) com.mapbox.mapboxsdk.style.layers.Property.VISIBLE else com.mapbox.mapboxsdk.style.layers.Property.NONE
+                        trackL?.setProperties(com.mapbox.mapboxsdk.style.layers.PropertyFactory.visibility(vis))
+                        loadedTrackL?.setProperties(com.mapbox.mapboxsdk.style.layers.PropertyFactory.visibility(vis))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error toggling track layer visibility", e)
+                }
+            }
+        }
+
+        cbLayerWaypoint.setOnCheckedChangeListener { _, isChecked ->
+            isWaypointLayerEnabled = isChecked
+        }
+
+        cbLayerPhoto.setOnCheckedChangeListener { _, isChecked ->
+            isPhotoLayerEnabled = isChecked
+            drawPhotoAnchorsOnMap()
+        }
+
         // Load track history list on startup
         refreshTrackList()
 
@@ -3032,12 +3095,56 @@ ${finalStyleJsonString ?: "None"}
         }
     }
 
+    private fun generateThumbnail(originalFile: File, anchorId: String): String? {
+        try {
+            val options = android.graphics.BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            android.graphics.BitmapFactory.decodeFile(originalFile.absolutePath, options)
+
+            val targetSize = 256
+            var inSampleSize = 1
+            val longestDim = Math.max(options.outWidth, options.outHeight)
+            if (longestDim > targetSize) {
+                inSampleSize = longestDim / targetSize
+            }
+
+            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            val bitmap = android.graphics.BitmapFactory.decodeFile(originalFile.absolutePath, decodeOptions) ?: return null
+
+            val width = bitmap.width
+            val height = bitmap.height
+            val scale = targetSize.toFloat() / Math.max(width, height)
+            val finalWidth = (width * scale).toInt()
+            val finalHeight = (height * scale).toInt()
+
+            val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, finalWidth, finalHeight, true)
+            
+            val thumbFile = File(TrackFileHelper.getThumbnailsDirectory(), "${anchorId}.webp")
+            val fos = java.io.FileOutputStream(thumbFile)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.WEBP_LOSSY, 85, fos)
+            } else {
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.WEBP, 85, fos)
+            }
+            fos.close()
+            
+            bitmap.recycle()
+            if (scaledBitmap != bitmap) {
+                scaledBitmap.recycle()
+            }
+            return thumbFile.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating thumbnail for ${originalFile.name}", e)
+            return null
+        }
+    }
+
     private fun savePhotoAnchor(file: File) {
         val activeId = currentTrackId
-        if (activeId == 0L) {
-            Toast.makeText(this, "未在记录轨迹中，照片已保存至本地，但未绑定轨迹", Toast.LENGTH_LONG).show()
-            return
-        }
+        val boundTrackId = if (activeId != 0L) activeId else null
 
         val lat = lastGpsLatitude ?: 0.0
         val lon = lastGpsLongitude ?: 0.0
@@ -3049,23 +3156,29 @@ ${finalStyleJsonString ?: "None"}
             return
         }
 
+        val anchorId = java.util.UUID.randomUUID().toString()
         dbExecutor.execute {
+            val thumbPath = generateThumbnail(file, anchorId)
             val anchor = PhotoAnchor(
-                trackId = activeId,
+                id = anchorId,
+                trackId = boundTrackId,
                 latitude = lat,
                 longitude = lon,
                 elevation = alt,
                 timestamp = time,
-                photoPath = file.absolutePath
+                imagePath = file.absolutePath,
+                thumbnailPath = thumbPath,
+                note = ""
             )
             trackDao.insertPhotoAnchor(anchor)
             
-            // Sync current track to disk immediately
-            val track = trackDao.getTrackById(activeId)
-            val points = trackDao.getTrackPoints(activeId)
-            val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
-            if (track != null) {
-                TrackFileHelper.saveTrackToJson(track, points, anchors)
+            if (boundTrackId != null) {
+                val track = trackDao.getTrackById(boundTrackId)
+                val points = trackDao.getTrackPoints(boundTrackId)
+                val anchors = trackDao.getPhotoAnchorsForTrack(boundTrackId)
+                if (track != null) {
+                    TrackFileHelper.saveTrackToJson(track, points, anchors)
+                }
             }
 
             runOnUiThread {
@@ -3075,26 +3188,78 @@ ${finalStyleJsonString ?: "None"}
         }
     }
 
+    private fun createPhotoIconBitmap(): com.mapbox.mapboxsdk.annotations.Icon {
+        val density = resources.displayMetrics.density
+        val size = (32 * density).toInt()
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+        }
+
+        // Outer Cyber Green circle ring
+        paint.color = 0xFF10B981.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+
+        // Inner Slate circle
+        paint.color = 0xFF0F172A.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, (size / 2f) - (2 * density), paint)
+
+        // Center emoji
+        paint.color = android.graphics.Color.WHITE
+        paint.textSize = 14 * density
+        paint.textAlign = android.graphics.Paint.Align.CENTER
+        
+        val fontMetrics = paint.fontMetrics
+        val y = (size / 2f) - (fontMetrics.ascent + fontMetrics.descent) / 2f
+        canvas.drawText("📷", size / 2f, y, paint)
+
+        val iconFactory = com.mapbox.mapboxsdk.annotations.IconFactory.getInstance(this)
+        return iconFactory.fromBitmap(bitmap)
+    }
+
     private fun drawPhotoAnchorsOnMap() {
         val map = mapboxMap ?: return
         runOnUiThread {
             try {
-                // Clear existing markers
                 for (marker in photoMarkers) {
                     map.removeMarker(marker)
                 }
                 photoMarkers.clear()
 
+                if (!isPhotoLayerEnabled) {
+                    return@runOnUiThread
+                }
+
                 val activeId = loadedTrackId ?: currentTrackId
                 if (activeId != 0L) {
                     dbExecutor.execute {
                         val anchors = trackDao.getPhotoAnchorsForTrack(activeId)
+                        val photoIcon = createPhotoIconBitmap()
                         runOnUiThread {
                             for (anchor in anchors) {
                                 val markerOptions = com.mapbox.mapboxsdk.annotations.MarkerOptions()
                                     .position(com.mapbox.mapboxsdk.geometry.LatLng(anchor.latitude, anchor.longitude))
-                                    .title("📷 照片锚点")
-                                    .snippet("点击查看照片")
+                                    .icon(photoIcon)
+                                    .title("📷 ${File(anchor.imagePath).name}")
+                                    .snippet(anchor.note.ifEmpty { "点击查看照片" })
+                                val marker = map.addMarker(markerOptions)
+                                photoMarkers.add(marker)
+                            }
+                        }
+                    }
+                } else {
+                    dbExecutor.execute {
+                        val anchors = trackDao.getAllPhotoAnchors()
+                        val photoIcon = createPhotoIconBitmap()
+                        runOnUiThread {
+                            for (anchor in anchors) {
+                                val markerOptions = com.mapbox.mapboxsdk.annotations.MarkerOptions()
+                                    .position(com.mapbox.mapboxsdk.geometry.LatLng(anchor.latitude, anchor.longitude))
+                                    .icon(photoIcon)
+                                    .title("📷 ${File(anchor.imagePath).name}")
+                                    .snippet(anchor.note.ifEmpty { "点击查看照片" })
                                 val marker = map.addMarker(markerOptions)
                                 photoMarkers.add(marker)
                             }
@@ -3117,15 +3282,15 @@ ${finalStyleJsonString ?: "None"}
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xE60F172A.toInt()) // Cyber slate transparent dark
-                setStroke((1 * density).toInt(), 0xFF10B981.toInt()) // Cyber green border
+                setColor(0xE60F172A.toInt())
+                setStroke((1 * density).toInt(), 0xFF10B981.toInt())
                 cornerRadius = 8 * density
             }
         }
 
         val tvTitle = TextView(this).apply {
-            text = "📷 户外照片锚点"
-            setTextColor(0xFF10B981.toInt()) // Cyber green
+            text = "📷 照片航点信息"
+            setTextColor(0xFF10B981.toInt())
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, (12 * density).toInt())
@@ -3135,19 +3300,26 @@ ${finalStyleJsonString ?: "None"}
         val imageView = android.widget.ImageView(this).apply {
             val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                (240 * density).toInt()
+                (180 * density).toInt()
             ).apply {
                 setMargins(0, 0, 0, (12 * density).toInt())
             }
             layoutParams = params
             scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
             
-            val file = File(anchor.photoPath)
+            val path = anchor.thumbnailPath ?: anchor.imagePath
+            val file = File(path)
             if (file.exists()) {
                 val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
                 setImageBitmap(bitmap)
             } else {
-                setImageResource(android.R.drawable.ic_menu_gallery)
+                val orig = File(anchor.imagePath)
+                if (orig.exists()) {
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(orig.absolutePath)
+                    setImageBitmap(bitmap)
+                } else {
+                    setImageResource(android.R.drawable.ic_menu_gallery)
+                }
             }
         }
         container.addView(imageView)
@@ -3155,9 +3327,10 @@ ${finalStyleJsonString ?: "None"}
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
         val dateStr = sdf.format(java.util.Date(anchor.timestamp))
         val eleStr = if (anchor.elevation != null) "%.1f m".format(anchor.elevation) else "无"
+        val noteDisplay = if (anchor.note.isNotEmpty()) anchor.note else "无"
 
         val tvMeta = TextView(this).apply {
-            text = "时间: $dateStr\n经度: ${anchor.longitude}\n纬度: ${anchor.latitude}\n海拔: $eleStr\n路径: ${anchor.photoPath}"
+            text = "文件名: ${File(anchor.imagePath).name}\n时间: $dateStr\n经度: ${anchor.longitude}\n纬度: ${anchor.latitude}\n海拔: $eleStr\n备注: $noteDisplay"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
@@ -3166,25 +3339,546 @@ ${finalStyleJsonString ?: "None"}
         }
         container.addView(tvMeta)
 
-        val btnClose = TextView(this).apply {
-            text = "关闭"
+        val actionLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, (12 * density).toInt(), 0, 0)
+            }
+        }
+
+        val btnViewOriginal = TextView(this).apply {
+            text = "🔎 原图"
             setTextColor(0xFF0F172A.toInt())
-            textSize = 12f
+            textSize = 11sp
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
-            setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
+            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF10B981.toInt()) // Cyber green
+                setColor(0xFF10B981.toInt())
                 cornerRadius = 4 * density
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, (6 * density).toInt(), 0)
+            }
+            setOnClickListener {
+                dialog.dismiss()
+                showFullScreenImage(anchor.imagePath)
+            }
+        }
+
+        val btnEditNote = TextView(this).apply {
+            text = "✏️ 备注"
+            setTextColor(0xFF0F172A.toInt())
+            textSize = 11sp
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFFF59E0B.toInt())
+                cornerRadius = 4 * density
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, (6 * density).toInt(), 0)
+            }
+            setOnClickListener {
+                dialog.dismiss()
+                showEditNoteDialog(anchor)
+            }
+        }
+
+        val btnDelete = TextView(this).apply {
+            text = "🗑 删除"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 11sp
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFFEF4444.toInt())
+                cornerRadius = 4 * density
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, (6 * density).toInt(), 0)
+            }
+            setOnClickListener {
+                dialog.dismiss()
+                showDeleteAnchorConfirmDialog(anchor)
+            }
+        }
+
+        val btnClose = TextView(this).apply {
+            text = "✖ 关闭"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 11sp
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF475569.toInt())
+                cornerRadius = 4 * density
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+
+        actionLayout.addView(btnViewOriginal)
+        actionLayout.addView(btnEditNote)
+        actionLayout.addView(btnDelete)
+        actionLayout.addView(btnClose)
+        container.addView(actionLayout)
+
+        dialog.setView(container)
+        dialog.show()
+    }
+
+    private fun showFullScreenImage(imagePath: String) {
+        val file = File(imagePath)
+        if (!file.exists()) {
+            Toast.makeText(this, "照片不存在", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val density = resources.displayMetrics.density
+
+        val frame = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+
+        val imageView = android.widget.ImageView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            try {
+                val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                setImageBitmap(bitmap)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load original photo", e)
+            }
+        }
+        frame.addView(imageView)
+
+        val btnClose = TextView(this).apply {
+            text = "✕"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 24f
+            gravity = android.view.Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x80000000.toInt())
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+            }
+            val size = (40 * density).toInt()
+            layoutParams = android.widget.FrameLayout.LayoutParams(size, size).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                setMargins((16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt())
             }
             setOnClickListener {
                 dialog.dismiss()
             }
         }
-        container.addView(btnClose)
+        frame.addView(btnClose)
 
-        dialog.setView(container)
+        var scale = 1.0f
+        var translationX = 0f
+        var translationY = 0f
+        var mode = 0
+        var startX = 0f
+        var startY = 0f
+        var startScale = 1.0f
+        var initialSpacing = 1f
+
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                scale = if (scale > 1.0f) 1.0f else 2.5f
+                translationX = 0f
+                translationY = 0f
+                imageView.scaleX = scale
+                imageView.scaleY = scale
+                imageView.translationX = translationX
+                imageView.translationY = translationY
+                return true
+            }
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                dialog.dismiss()
+                return true
+            }
+        })
+
+        imageView.setOnTouchListener { _, event ->
+            if (gestureDetector.onTouchEvent(event)) {
+                return@setOnTouchListener true
+            }
+
+            val action = event.action and MotionEvent.ACTION_MASK
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    mode = 1
+                    startX = event.x - translationX
+                    startY = event.y - translationY
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    initialSpacing = getSpacing(event)
+                    if (initialSpacing > 10f) {
+                        mode = 2
+                        startScale = scale
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (mode == 1 && scale > 1.0f) {
+                        translationX = event.x - startX
+                        translationY = event.y - startY
+                        imageView.translationX = translationX
+                        imageView.translationY = translationY
+                    } else if (mode == 2) {
+                        val newSpacing = getSpacing(event)
+                        if (newSpacing > 10f) {
+                            val factor = newSpacing / initialSpacing
+                            scale = startScale * factor
+                            if (scale < 0.8f) scale = 0.8f
+                            if (scale > 5.0f) scale = 5.0f
+                            imageView.scaleX = scale
+                            imageView.scaleY = scale
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                    if (scale < 1.0f) {
+                        scale = 1.0f
+                        translationX = 0f
+                        translationY = 0f
+                        imageView.scaleX = 1f
+                        imageView.scaleY = 1f
+                        imageView.translationX = 0f
+                        imageView.translationY = 0f
+                    }
+                    mode = 0
+                }
+            }
+            true
+        }
+
+        dialog.setContentView(frame)
         dialog.show()
+    }
+
+    private fun getSpacing(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        val x = event.getX(0) - event.getX(1)
+        val y = event.getY(0) - event.getY(1)
+        return Math.sqrt((x * x + y * y).toDouble()).toFloat()
+    }
+
+    private fun showEditNoteDialog(anchor: PhotoAnchor) {
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+        }
+
+        val input = EditText(this).apply {
+            setText(anchor.note)
+            setHint("输入备注信息...")
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(0x80FFFFFF.toInt())
+        }
+        container.addView(input)
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("编辑照片备注")
+            .setView(container)
+            .setPositiveButton("保存") { dialog, _ ->
+                val newNote = input.text.toString().trim()
+                dbExecutor.execute {
+                    val updatedAnchor = anchor.copy(note = newNote)
+                    trackDao.updatePhotoAnchor(updatedAnchor)
+                    
+                    val trackId = anchor.trackId
+                    if (trackId != null) {
+                        val track = trackDao.getTrackById(trackId)
+                        val points = trackDao.getTrackPoints(trackId)
+                        val anchors = trackDao.getPhotoAnchorsForTrack(trackId)
+                        if (track != null) {
+                            TrackFileHelper.saveTrackToJson(track, points, anchors)
+                        }
+                    }
+                    
+                    runOnUiThread {
+                        Toast.makeText(this, "备注更新成功！", Toast.LENGTH_SHORT).show()
+                        drawPhotoAnchorsOnMap()
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDeleteAnchorConfirmDialog(anchor: PhotoAnchor) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("删除照片锚点")
+            .setMessage("确定要删除此照片锚点吗？这不会删除您的原始照片文件，但会从地图和轨迹中移除该锚点。")
+            .setPositiveButton("确定") { dialog, _ ->
+                dbExecutor.execute {
+                    trackDao.deletePhotoAnchor(anchor.id)
+                    
+                    anchor.thumbnailPath?.let { path ->
+                        val file = File(path)
+                        if (file.exists()) {
+                            file.delete()
+                        }
+                    }
+
+                    val trackId = anchor.trackId
+                    if (trackId != null) {
+                        val track = trackDao.getTrackById(trackId)
+                        val points = trackDao.getTrackPoints(trackId)
+                        val anchors = trackDao.getPhotoAnchorsForTrack(trackId)
+                        if (track != null) {
+                            TrackFileHelper.saveTrackToJson(track, points, anchors)
+                        }
+                    }
+
+                    runOnUiThread {
+                        Toast.makeText(this, "锚点删除成功", Toast.LENGTH_SHORT).show()
+                        drawPhotoAnchorsOnMap()
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun importPhotoFromUri(uri: Uri) {
+        try {
+            val contentResolver = this.contentResolver
+            val mimeType = contentResolver.getType(uri) ?: ""
+            val extension = when {
+                mimeType.contains("png") -> "png"
+                mimeType.contains("webp") -> "webp"
+                mimeType.contains("gif") -> "gif"
+                else -> "jpg"
+            }
+
+            val anchorId = java.util.UUID.randomUUID().toString()
+            val destFile = File(TrackFileHelper.getPhotosDirectory(), "photo_${anchorId}.${extension}")
+
+            contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            if (!destFile.exists()) {
+                Toast.makeText(this, "照片复制失败", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            var lat: Double? = null
+            var lon: Double? = null
+            var timestamp: Long = System.currentTimeMillis()
+            var elevation: Double? = null
+
+            try {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    val exifInterface = androidx.exifinterface.media.ExifInterface(input)
+                    
+                    val latLong = exifInterface.latLong
+                    if (latLong != null && latLong.size >= 2) {
+                        lat = latLong[0]
+                        lon = latLong[1]
+                    }
+
+                    val alt = exifInterface.getAltitude(0.0)
+                    if (alt != 0.0) {
+                        elevation = alt
+                    }
+
+                    val dateStr = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+                        ?: exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME)
+                    if (dateStr != null) {
+                        val exSdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
+                        exSdf.parse(dateStr)?.let {
+                            timestamp = it.time
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error reading EXIF from $uri", e)
+            }
+
+            val thumbPath = generateThumbnail(destFile, anchorId)
+
+            if (lat != null && lon != null) {
+                createAndSavePhotoAnchor(
+                    id = anchorId,
+                    latitude = lat!!,
+                    longitude = lon!!,
+                    elevation = elevation,
+                    timestamp = timestamp,
+                    imagePath = destFile.absolutePath,
+                    thumbnailPath = thumbPath
+                )
+            } else {
+                showNoGpsPhotoAnchorOptionsDialog(
+                    id = anchorId,
+                    imagePath = destFile.absolutePath,
+                    thumbnailPath = thumbPath,
+                    timestamp = timestamp,
+                    elevation = elevation
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing photo from Uri", e)
+            Toast.makeText(this, "照片导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showNoGpsPhotoAnchorOptionsDialog(
+        id: String,
+        imagePath: String,
+        thumbnailPath: String?,
+        timestamp: Long,
+        elevation: Double?
+    ) {
+        val options = mutableListOf<String>()
+        val actions = mutableListOf<() -> Unit>()
+
+        val latestPt = synchronized(currentTrackPoints) { currentTrackPoints.lastOrNull() }
+        if (latestPt != null && (trackStatus == "RECORDING" || trackStatus == "PAUSED")) {
+            options.add("A. 关联到当前轨迹最新位置 (${String.format("%.6f", latestPt.latitude)}, ${String.format("%.6f", latestPt.longitude)})")
+            actions.add {
+                createAndSavePhotoAnchor(id, latestPt.latitude, latestPt.longitude, latestPt.elevation ?: elevation, timestamp, imagePath, thumbnailPath)
+            }
+        } else {
+            options.add("A. 关联到当前轨迹最新位置 (不可用: 当前未记录轨迹)")
+            actions.add {
+                Toast.makeText(this, "当前无正在记录的轨迹", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val center = mapboxMap?.cameraPosition?.target
+        if (center != null) {
+            options.add("B. 关联到当前地图中心点 (${String.format("%.6f", center.latitude)}, ${String.format("%.6f", center.longitude)})")
+            actions.add {
+                createAndSavePhotoAnchor(id, center.latitude, center.longitude, elevation, timestamp, imagePath, thumbnailPath)
+            }
+        }
+
+        options.add("C. 手动输入经纬度坐标")
+        actions.add {
+            showManualCoordinatesDialog(id, imagePath, thumbnailPath, timestamp, elevation)
+        }
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("照片未包含 GPS 坐标，请选择定位方式：")
+            .setItems(options.toTypedArray()) { dialog, which ->
+                actions[which].invoke()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showManualCoordinatesDialog(
+        id: String,
+        imagePath: String,
+        thumbnailPath: String?,
+        timestamp: Long,
+        elevation: Double?
+    ) {
+        val density = resources.displayMetrics.density
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+        }
+
+        val etLat = EditText(this).apply {
+            setHint("纬度 (Latitude, e.g., 39.9042)")
+            setInputType(android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED)
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(0x80FFFFFF.toInt())
+        }
+        val etLon = EditText(this).apply {
+            setHint("经度 (Longitude, e.g., 116.4074)")
+            setInputType(android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED)
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(0x80FFFFFF.toInt())
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (10 * density).toInt()
+            }
+            layoutParams = lp
+        }
+
+        container.addView(etLat)
+        container.addView(etLon)
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("手动输入经纬度坐标")
+            .setView(container)
+            .setPositiveButton("确定") { dialog, _ ->
+                val latVal = etLat.text.toString().trim().toDoubleOrNull()
+                val lonVal = etLon.text.toString().trim().toDoubleOrNull()
+                if (latVal == null || lonVal == null || latVal < -90.0 || latVal > 90.0 || lonVal < -180.0 || lonVal > 180.0) {
+                    Toast.makeText(this, "请输入合法的经纬度坐标！", Toast.LENGTH_SHORT).show()
+                } else {
+                    createAndSavePhotoAnchor(id, latVal, lonVal, elevation, timestamp, imagePath, thumbnailPath)
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun createAndSavePhotoAnchor(
+        id: String,
+        latitude: Double,
+        longitude: Double,
+        elevation: Double?,
+        timestamp: Long,
+        imagePath: String,
+        thumbnailPath: String?
+    ) {
+        val activeTrackId = loadedTrackId ?: currentTrackId
+        val boundTrackId = if (activeTrackId != 0L) activeTrackId else null
+
+        val anchor = PhotoAnchor(
+            id = id,
+            trackId = boundTrackId,
+            latitude = latitude,
+            longitude = longitude,
+            elevation = elevation,
+            timestamp = timestamp,
+            imagePath = imagePath,
+            thumbnailPath = thumbnailPath,
+            note = ""
+        )
+
+        dbExecutor.execute {
+            trackDao.insertPhotoAnchor(anchor)
+            
+            if (boundTrackId != null) {
+                val track = trackDao.getTrackById(boundTrackId)
+                val points = trackDao.getTrackPoints(boundTrackId)
+                val anchors = trackDao.getPhotoAnchorsForTrack(boundTrackId)
+                if (track != null) {
+                    TrackFileHelper.saveTrackToJson(track, points, anchors)
+                }
+            }
+
+            runOnUiThread {
+                Toast.makeText(this, "照片锚点已成功保存并在地图上展示！", Toast.LENGTH_SHORT).show()
+                drawPhotoAnchorsOnMap()
+            }
+        }
     }
 
     private fun toggleLoadedTrackOnMap(track: Track) {

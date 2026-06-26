@@ -20,6 +20,8 @@ object TrackFileHelper {
     private const val BASE_PATH = "/storage/emulated/0/CyberTrail"
     private const val TRACKS_PATH = "$BASE_PATH/Tracks"
     private const val EXPORT_PATH = "$BASE_PATH/Export"
+    private const val PHOTOS_PATH = "$BASE_PATH/Photos"
+    private const val THUMBNAILS_PATH = "$PHOTOS_PATH/thumbnails"
 
     fun ensureDirectories() {
         try {
@@ -31,6 +33,12 @@ object TrackFileHelper {
 
             val exportDir = File(EXPORT_PATH)
             if (!exportDir.exists()) exportDir.mkdirs()
+
+            val photosDir = File(PHOTOS_PATH)
+            if (!photosDir.exists()) photosDir.mkdirs()
+
+            val thumbnailsDir = File(THUMBNAILS_PATH)
+            if (!thumbnailsDir.exists()) thumbnailsDir.mkdirs()
         } catch (e: Exception) {
             Log.e(TAG, "Error ensuring directories exist", e)
         }
@@ -38,6 +46,8 @@ object TrackFileHelper {
 
     fun getTracksDirectory(): File = File(TRACKS_PATH)
     fun getExportDirectory(): File = File(EXPORT_PATH)
+    fun getPhotosDirectory(): File = File(PHOTOS_PATH)
+    fun getThumbnailsDirectory(): File = File(THUMBNAILS_PATH)
 
     /**
      * Saves a track to disk as a .track (JSON) file under CyberTrail/Tracks/
@@ -58,12 +68,14 @@ object TrackFileHelper {
                 for (anchor in photoAnchors) {
                     val pJson = JSONObject().apply {
                         put("id", anchor.id)
-                        put("trackId", anchor.trackId)
+                        put("trackId", anchor.trackId ?: JSONObject.NULL)
                         put("latitude", anchor.latitude)
                         put("longitude", anchor.longitude)
                         put("elevation", anchor.elevation ?: JSONObject.NULL)
                         put("timestamp", anchor.timestamp)
-                        put("photoPath", anchor.photoPath)
+                        put("imagePath", anchor.imagePath)
+                        put("thumbnailPath", anchor.thumbnailPath ?: JSONObject.NULL)
+                        put("note", anchor.note)
                     }
                     photoArray.put(pJson)
                 }
@@ -150,13 +162,15 @@ object TrackFileHelper {
                 val photoArray = trackJson.getJSONArray("photoRefs")
                 for (i in 0 until photoArray.length()) {
                     val pJson = photoArray.getJSONObject(i)
-                    val pId = if (pJson.has("id")) pJson.getLong("id") else 0L
-                    val pTrackId = pJson.getLong("trackId")
+                    val pId = if (pJson.has("id")) pJson.getString("id") else java.util.UUID.randomUUID().toString()
+                    val pTrackId = if (pJson.isNull("trackId")) null else pJson.getLong("trackId")
                     val latitude = pJson.getDouble("latitude")
                     val longitude = pJson.getDouble("longitude")
                     val elevation = if (pJson.isNull("elevation")) null else pJson.getDouble("elevation")
                     val timestamp = pJson.getLong("timestamp")
-                    val photoPath = pJson.getString("photoPath")
+                    val imagePath = pJson.optString("imagePath", pJson.optString("photoPath", ""))
+                    val thumbnailPath = if (pJson.isNull("thumbnailPath")) null else pJson.getString("thumbnailPath")
+                    val note = pJson.optString("note", "")
 
                     photoList.add(PhotoAnchor(
                         id = pId,
@@ -165,7 +179,9 @@ object TrackFileHelper {
                         longitude = longitude,
                         elevation = elevation,
                         timestamp = timestamp,
-                        photoPath = photoPath
+                        imagePath = imagePath,
+                        thumbnailPath = thumbnailPath,
+                        note = note
                     ))
                 }
             }
@@ -209,11 +225,15 @@ object TrackFileHelper {
     }
 
     /**
-     * Exports a track directly from a .track JSON file to GPX
+     * Exports a track directly from a .track JSON file to a specific format
      */
-    fun exportTrackFileToGpx(trackFile: File): File? {
+    fun exportTrackFileToFormat(trackFile: File, format: String): File? {
         val parsed = readTrackFromJson(trackFile) ?: return null
-        return exportTrack(parsed.first, parsed.second, "GPX")
+        return exportTrack(parsed.first, parsed.second, parsed.third, format)
+    }
+
+    fun exportTrackFileToGpx(trackFile: File): File? {
+        return exportTrackFileToFormat(trackFile, "GPX")
     }
 
     /**
@@ -234,21 +254,23 @@ object TrackFileHelper {
     /**
      * Exports a track to standard GPX 1.1 format under CyberTrail/Export/
      */
-    fun exportToGpx(track: Track, points: List<TrackPoint>): File? {
-        return exportTrack(track, points, "GPX")
+    fun exportToGpx(track: Track, points: List<TrackPoint>, photoAnchors: List<PhotoAnchor> = emptyList()): File? {
+        return exportTrack(track, points, photoAnchors, "GPX")
     }
 
     /**
-     * Exports a track to GPX, KML, or JSON format under `/storage/emulated/0/CyberTrail/Tracks/`
+     * Exports a track to GPX, KML, or GeoJSON format under `/storage/emulated/0/CyberTrail/Export/`
      * Filename format: YYYYMMDD_HHMMSS_track.<ext>
      */
-    fun exportTrack(track: Track, points: List<TrackPoint>, format: String): File? {
+    fun exportTrack(track: Track, points: List<TrackPoint>, photoAnchors: List<PhotoAnchor> = emptyList(), format: String): File? {
         ensureDirectories()
         try {
             val fileSdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             val timeString = fileSdf.format(Date(track.startTime))
             val ext = format.lowercase(Locale.US)
-            val file = File(TRACKS_PATH, "${timeString}_track.$ext")
+            
+            val safeName = track.name?.replace("[\\\\/:*?\"<>|\\s]+".toRegex(), "_") ?: "track_${track.id}"
+            val file = File(EXPORT_PATH, "${timeString}_${safeName}.$ext")
 
             when (format.uppercase(Locale.US)) {
                 "GPX" -> {
@@ -266,6 +288,22 @@ object TrackFileHelper {
                     sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
                     sb.append("    <time>${sdf.format(Date(track.startTime))}</time>\n")
                     sb.append("  </metadata>\n")
+
+                    // Add waypoints for photo anchors BEFORE track to respect GPX schema validation
+                    for (anchor in photoAnchors) {
+                        val fileName = File(anchor.imagePath).name
+                        sb.append("  <wpt lat=\"${anchor.latitude}\" lon=\"${anchor.longitude}\">\n")
+                        if (anchor.elevation != null) {
+                            sb.append("    <ele>${anchor.elevation}</ele>\n")
+                        }
+                        sb.append("    <time>${sdf.format(Date(anchor.timestamp))}</time>\n")
+                        sb.append("    <name><![CDATA[${fileName}]]></name>\n")
+                        if (anchor.note.isNotEmpty()) {
+                            sb.append("    <desc><![CDATA[${anchor.note}]]></desc>\n")
+                        }
+                        sb.append("    <link href=\"file://${anchor.imagePath}\"/>\n")
+                        sb.append("  </wpt>\n")
+                    }
 
                     sb.append("  <trk>\n")
                     sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
@@ -295,6 +333,19 @@ object TrackFileHelper {
                     sb.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
                     sb.append("  <Document>\n")
                     sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
+                    
+                    // Add Placemarks for Photo Anchors
+                    for (anchor in photoAnchors) {
+                        val fileName = File(anchor.imagePath).name
+                        sb.append("    <Placemark>\n")
+                        sb.append("      <name><![CDATA[${fileName}]]></name>\n")
+                        sb.append("      <description><![CDATA[${anchor.note}]]></description>\n")
+                        sb.append("      <Point>\n")
+                        sb.append("        <coordinates>${anchor.longitude},${anchor.latitude},${anchor.elevation ?: 0.0}</coordinates>\n")
+                        sb.append("      </Point>\n")
+                        sb.append("    </Placemark>\n")
+                    }
+
                     sb.append("    <Placemark>\n")
                     sb.append("      <name>Path</name>\n")
                     sb.append("      <LineString>\n")
@@ -342,6 +393,80 @@ object TrackFileHelper {
                     }
                     json.put("points", pointsArray)
 
+                    file.writeText(json.toString(2))
+                }
+                "GEOJSON" -> {
+                    val json = JSONObject()
+                    json.put("type", "FeatureCollection")
+
+                    val featuresArray = JSONArray()
+
+                    // Add track LineString feature
+                    if (points.isNotEmpty()) {
+                        val trackFeature = JSONObject().apply {
+                            put("type", "Feature")
+                            val props = JSONObject().apply {
+                                put("type", "Track")
+                                put("name", track.name ?: "Track #${track.id}")
+                                put("startTime", track.startTime)
+                                put("endTime", track.endTime ?: JSONObject.NULL)
+                            }
+                            put("properties", props)
+
+                            val geom = JSONObject().apply {
+                                put("type", "LineString")
+                                val coords = JSONArray()
+                                for (pt in points) {
+                                    val coord = JSONArray().apply {
+                                        put(pt.longitude)
+                                        put(pt.latitude)
+                                        if (pt.elevation != null) {
+                                            put(pt.elevation)
+                                        }
+                                    }
+                                    coords.put(coord)
+                                }
+                                put("coordinates", coords)
+                            }
+                            put("geometry", geom)
+                        }
+                        featuresArray.put(trackFeature)
+                    }
+
+                    // Add point features for each photo anchor
+                    for (anchor in photoAnchors) {
+                        val anchorFeature = JSONObject().apply {
+                            put("type", "Feature")
+                            val props = JSONObject().apply {
+                                put("type", "PhotoAnchor")
+                                put("id", anchor.id)
+                                put("filename", File(anchor.imagePath).name)
+                                put("time", anchor.timestamp)
+                                put("note", anchor.note)
+                                put("imagePath", anchor.imagePath)
+                                put("thumbnailPath", anchor.thumbnailPath ?: JSONObject.NULL)
+                                put("elevation", anchor.elevation ?: JSONObject.NULL)
+                                put("trackId", anchor.trackId ?: JSONObject.NULL)
+                            }
+                            put("properties", props)
+
+                            val geom = JSONObject().apply {
+                                put("type", "Point")
+                                val coord = JSONArray().apply {
+                                    put(anchor.longitude)
+                                    put(anchor.latitude)
+                                    if (anchor.elevation != null) {
+                                        put(anchor.elevation)
+                                    }
+                                }
+                                put("coordinates", coord)
+                            }
+                            put("geometry", geom)
+                        }
+                        featuresArray.put(anchorFeature)
+                    }
+
+                    json.put("features", featuresArray)
                     file.writeText(json.toString(2))
                 }
             }
