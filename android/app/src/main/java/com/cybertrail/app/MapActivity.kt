@@ -63,6 +63,14 @@ import android.app.Dialog
 import android.view.GestureDetector
 import java.text.SimpleDateFormat
 import java.util.Locale
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.pm.PackageManager
+import android.provider.MediaStore
+import android.os.Build
+import androidx.core.content.ContextCompat
+import android.Manifest
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
@@ -209,6 +217,43 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private var isTrackLayerEnabled = true
     private var isWaypointLayerEnabled = true
     private var isPhotoLayerEnabled = true
+
+    private val trackServiceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                com.cybertrail.app.gis.TrackForegroundService.ACTION_NEW_POINT -> {
+                    val lat = intent.getDoubleExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_LAT, 0.0)
+                    val lon = intent.getDoubleExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_LON, 0.0)
+                    val alt = intent.getDoubleExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_ALT, -1000.0)
+                    val elevation = if (alt == -1000.0) null else alt
+                    val time = intent.getLongExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_TIME, 0L)
+                    val speed = intent.getFloatExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_SPEED, 0f)
+                    val accuracy = intent.getFloatExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_POINT_ACCURACY, 0f)
+
+                    val tp = TrackPoint(
+                        trackId = currentTrackId,
+                        latitude = lat,
+                        longitude = lon,
+                        elevation = elevation,
+                        timestamp = time,
+                        speed = speed,
+                        accuracy = accuracy
+                    )
+                    synchronized(currentTrackPoints) {
+                        if (currentTrackPoints.none { it.timestamp == tp.timestamp }) {
+                            currentTrackPoints.add(tp)
+                        }
+                    }
+                    drawTrackOnMap()
+                    updateTrackStatsUi()
+                }
+                com.cybertrail.app.gis.TrackForegroundService.ACTION_TICK -> {
+                    trackTotalSeconds = intent.getLongExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_DURATION, 0L)
+                    updateTrackStatsUi()
+                }
+            }
+        }
+    }
 
     private val photoImportLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -1347,11 +1392,28 @@ ${finalStyleJsonString ?: "None"}
         Log.d("CYBERTRAIL_MAP", "MapView onResume")
         startGpsTracking()
         
-        if (trackStatus == "RECORDING" || trackStatus == "PAUSED") {
-            mainHandler.removeCallbacks(saveRunnable)
-            mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
-            mainHandler.removeCallbacks(durationRunnable)
-            mainHandler.post(durationRunnable)
+        if (com.cybertrail.app.gis.TrackForegroundService.isRunning) {
+            currentTrackId = com.cybertrail.app.gis.TrackForegroundService.trackId
+            trackStatus = com.cybertrail.app.gis.TrackForegroundService.currentStatus
+            trackStartTime = com.cybertrail.app.gis.TrackForegroundService.trackStartTime
+            trackTotalSeconds = com.cybertrail.app.gis.TrackForegroundService.activeDurationSeconds
+            synchronized(currentTrackPoints) {
+                currentTrackPoints.clear()
+                currentTrackPoints.addAll(com.cybertrail.app.gis.TrackForegroundService.currentPoints)
+            }
+            updateTrackUi()
+            drawTrackOnMap()
+            updateTrackStatsUi()
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(com.cybertrail.app.gis.TrackForegroundService.ACTION_NEW_POINT)
+            addAction(com.cybertrail.app.gis.TrackForegroundService.ACTION_TICK)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(trackServiceReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(trackServiceReceiver, filter)
         }
     }
 
@@ -1361,11 +1423,16 @@ ${finalStyleJsonString ?: "None"}
         Log.d("CYBERTRAIL_MAP", "MapView onPause")
         locationManager.removeUpdates(this)
         
-        mainHandler.removeCallbacks(saveRunnable)
-        mainHandler.removeCallbacks(durationRunnable)
+        try {
+            unregisterReceiver(trackServiceReceiver)
+        } catch (e: Exception) {
+            // Ignored
+        }
         
         // Immediately save the active track to SQLite and JSON file on pause (going to background)
-        forceSaveCurrentTrackToDisk()
+        if (!com.cybertrail.app.gis.TrackForegroundService.isRunning) {
+            forceSaveCurrentTrackToDisk()
+        }
     }
 
     override fun onStop() {
@@ -1374,7 +1441,9 @@ ${finalStyleJsonString ?: "None"}
         Log.d("CYBERTRAIL_MAP", "MapView onStop")
         
         // Switched to background / stopped
-        forceSaveCurrentTrackToDisk()
+        if (!com.cybertrail.app.gis.TrackForegroundService.isRunning) {
+            forceSaveCurrentTrackToDisk()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -2636,6 +2705,14 @@ ${finalStyleJsonString ?: "None"}
     private fun startRecordingTrack() {
         if (trackStatus != "STOPPED") return
 
+        // Request POST_NOTIFICATIONS permission first on API 33+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1004)
+                return
+            }
+        }
+
         val startTime = System.currentTimeMillis()
         val newTrack = Track(startTime = startTime, status = "RECORDING")
 
@@ -2651,16 +2728,19 @@ ${finalStyleJsonString ?: "None"}
 
                 Toast.makeText(this, "开始记录轨迹", Toast.LENGTH_SHORT).show()
 
+                // Start Foreground Service
+                val serviceIntent = Intent(this, com.cybertrail.app.gis.TrackForegroundService::class.java).apply {
+                    action = com.cybertrail.app.gis.TrackForegroundService.ACTION_START
+                    putExtra(com.cybertrail.app.gis.TrackForegroundService.EXTRA_TRACK_ID, id)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+
                 updateTrackUi()
                 drawTrackOnMap()
-
-                // Start periodic save
-                mainHandler.removeCallbacks(saveRunnable)
-                mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
-
-                // Start duration timer
-                mainHandler.removeCallbacks(durationRunnable)
-                mainHandler.post(durationRunnable)
             }
         }
     }
@@ -2668,50 +2748,38 @@ ${finalStyleJsonString ?: "None"}
     private fun pauseRecordingTrack() {
         if (trackStatus != "RECORDING") return
 
-        val trackId = currentTrackId
-        dbExecutor.execute {
-            val track = trackDao.getTrackById(trackId)
-            if (track != null) {
-                track.status = "PAUSED"
-                trackDao.updateTrack(track)
-                
-                // Save any pending points before pausing
-                savePendingPoints()
-
-                runOnUiThread {
-                    trackStatus = "PAUSED"
-                    Toast.makeText(this, "轨迹记录已暂停", Toast.LENGTH_SHORT).show()
-                    updateTrackUi()
-                    forceSaveCurrentTrackToDisk()
-                }
-            }
+        val serviceIntent = Intent(this, com.cybertrail.app.gis.TrackForegroundService::class.java).apply {
+            action = com.cybertrail.app.gis.TrackForegroundService.ACTION_PAUSE
         }
+        startService(serviceIntent)
+
+        trackStatus = "PAUSED"
+        Toast.makeText(this, "轨迹记录已暂停", Toast.LENGTH_SHORT).show()
+        updateTrackUi()
     }
 
     private fun resumeRecordingTrack() {
         if (trackStatus != "PAUSED") return
 
-        val trackId = currentTrackId
-        dbExecutor.execute {
-            val track = trackDao.getTrackById(trackId)
-            if (track != null) {
-                track.status = "RECORDING"
-                trackDao.updateTrack(track)
-
-                runOnUiThread {
-                    trackStatus = "RECORDING"
-                    Toast.makeText(this, "恢复轨迹记录", Toast.LENGTH_SHORT).show()
-                    updateTrackUi()
-                    forceSaveCurrentTrackToDisk()
-                }
-            }
+        val serviceIntent = Intent(this, com.cybertrail.app.gis.TrackForegroundService::class.java).apply {
+            action = com.cybertrail.app.gis.TrackForegroundService.ACTION_RESUME
         }
+        startService(serviceIntent)
+
+        trackStatus = "RECORDING"
+        Toast.makeText(this, "恢复轨迹记录", Toast.LENGTH_SHORT).show()
+        updateTrackUi()
     }
 
     private fun stopRecordingTrack() {
         if (trackStatus == "STOPPED") return
 
         val trackId = currentTrackId
+        val serviceIntent = Intent(this, com.cybertrail.app.gis.TrackForegroundService::class.java).apply {
+            action = com.cybertrail.app.gis.TrackForegroundService.ACTION_STOP
+        }
+        startService(serviceIntent)
+
         val endTime = System.currentTimeMillis()
         dbExecutor.execute {
             val track = trackDao.getTrackById(trackId)
@@ -2720,32 +2788,15 @@ ${finalStyleJsonString ?: "None"}
                 track.endTime = endTime
                 trackDao.updateTrack(track)
 
-                // Save remaining pending points synchronously
-                val remainingPoints = synchronized(pendingPointsToSave) {
-                    val copy = ArrayList(pendingPointsToSave)
-                    pendingPointsToSave.clear()
-                    copy
-                }
-                if (remainingPoints.isNotEmpty()) {
-                    try {
-                        trackDao.insertTrackPoints(remainingPoints)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error inserting remaining points", e)
-                    }
-                }
-
-                // Auto-save completed track to disk as .track JSON
+                // Save remaining pending points and generate track json
                 val allPoints = trackDao.getTrackPoints(trackId)
-                TrackFileHelper.saveTrackToJson(track, allPoints)
+                val anchors = trackDao.getPhotoAnchorsForTrack(trackId)
+                TrackFileHelper.saveTrackToJson(track, allPoints, anchors)
 
                 runOnUiThread {
                     trackStatus = "STOPPED"
                     Toast.makeText(this, "轨迹记录已结束，已成功保存至离线存储", Toast.LENGTH_LONG).show()
-                    
-                    // Stop runnables
-                    mainHandler.removeCallbacks(saveRunnable)
-                    mainHandler.removeCallbacks(durationRunnable)
-                    
+
                     // Update final UI
                     tvTrackStatus.text = "🛤️ 轨迹: 已结束"
                     btnTrackStart.visibility = View.VISIBLE
@@ -2781,6 +2832,7 @@ ${finalStyleJsonString ?: "None"}
 
     private fun recordLocationPoint(location: Location) {
         if (trackStatus != "RECORDING") return
+        if (com.cybertrail.app.gis.TrackForegroundService.isRunning) return
 
         val tp = TrackPoint(
             trackId = currentTrackId,
@@ -3706,6 +3758,39 @@ ${finalStyleJsonString ?: "None"}
             .show()
     }
 
+    private fun parseGpsCoordinate(raw: String?, ref: String?): Double? {
+        if (raw.isNullOrBlank()) return null
+        try {
+            val parts = raw.split(",")
+            if (parts.size < 3) return null
+            
+            fun parseRational(part: String): Double {
+                val subParts = part.trim().split("/")
+                if (subParts.size == 1) {
+                    return subParts[0].toDouble()
+                } else if (subParts.size == 2) {
+                    val denom = subParts[1].toDouble()
+                    if (denom == 0.0) return 0.0
+                    return subParts[0].toDouble() / denom
+                }
+                return 0.0
+            }
+            
+            val degrees = parseRational(parts[0])
+            val minutes = parseRational(parts[1])
+            val seconds = parseRational(parts[2])
+            
+            var result = degrees + (minutes / 60.0) + (seconds / 3600.0)
+            if (ref != null && (ref.trim().equals("S", ignoreCase = true) || ref.trim().equals("W", ignoreCase = true))) {
+                result = -result
+            }
+            return result
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing raw GPS: $raw", e)
+            return null
+        }
+    }
+
     private fun importPhotoFromUri(uri: Uri) {
         try {
             val contentResolver = this.contentResolver
@@ -3720,7 +3805,18 @@ ${finalStyleJsonString ?: "None"}
             val anchorId = java.util.UUID.randomUUID().toString()
             val destFile = File(TrackFileHelper.getPhotosDirectory(), "photo_${anchorId}.${extension}")
 
-            contentResolver.openInputStream(uri)?.use { input ->
+            val finalUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    MediaStore.setRequireOriginal(uri)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to setRequireOriginal for URI: $uri", e)
+                    uri
+                }
+            } else {
+                uri
+            }
+
+            contentResolver.openInputStream(finalUri)?.use { input ->
                 java.io.FileOutputStream(destFile).use { output ->
                     input.copyTo(output)
                 }
@@ -3760,7 +3856,17 @@ ${finalStyleJsonString ?: "None"}
                     Log.d(TAG, "lat=$lat")
                     Log.d(TAG, "lon=$lon")
                 } else {
-                    Log.d(TAG, "GPS Parse Failed")
+                    // Try our custom robust fallback parser
+                    val manualLat = parseGpsCoordinate(rawLat, latRef)
+                    val manualLon = parseGpsCoordinate(rawLon, lonRef)
+                    if (manualLat != null && manualLon != null) {
+                        lat = manualLat
+                        lon = manualLon
+                        Log.d(TAG, "lat=$lat")
+                        Log.d(TAG, "lon=$lon")
+                    } else {
+                        Log.d(TAG, "GPS Parse Failed")
+                    }
                 }
 
                 val alt = exifInterface.getAltitude(0.0)

@@ -8,13 +8,18 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import android.os.Build
-import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.cybertrail.app.MapActivity
 import com.cybertrail.app.db.AppDatabase
 import com.cybertrail.app.db.Track
@@ -22,10 +27,10 @@ import com.cybertrail.app.db.TrackPoint
 import java.io.File
 import java.util.concurrent.Executors
 
-class TrackService : Service(), LocationListener {
+class TrackForegroundService : Service() {
 
     companion object {
-        private const val TAG = "TrackService"
+        private const val TAG = "TrackForegroundService"
         private const val NOTIFICATION_ID = 888
         private const val CHANNEL_ID = "track_recording_channel"
 
@@ -36,7 +41,7 @@ class TrackService : Service(), LocationListener {
         
         const val EXTRA_TRACK_ID = "extra_track_id"
         
-        // Broadcast action to notify MapActivity about new points
+        // Broadcast actions
         const val ACTION_NEW_POINT = "com.cybertrail.app.action.NEW_POINT"
         const val EXTRA_POINT_LAT = "extra_point_lat"
         const val EXTRA_POINT_LON = "extra_point_lon"
@@ -44,6 +49,11 @@ class TrackService : Service(), LocationListener {
         const val EXTRA_POINT_TIME = "extra_point_time"
         const val EXTRA_POINT_SPEED = "extra_point_speed"
         const val EXTRA_POINT_ACCURACY = "extra_point_accuracy"
+
+        const val ACTION_TICK = "com.cybertrail.app.action.TICK"
+        const val EXTRA_DURATION = "extra_duration"
+        const val EXTRA_DISTANCE = "extra_distance"
+        const val EXTRA_POINTS_COUNT = "extra_points_count"
         
         @Volatile
         var isRunning = false
@@ -58,17 +68,69 @@ class TrackService : Service(), LocationListener {
             private set
             
         val currentPoints = mutableListOf<TrackPoint>()
+
+        @Volatile
+        var trackStartTime: Long = 0L
+            private set
+
+        @Volatile
+        var totalDistanceMeters: Float = 0f
+            private set
+
+        @Volatile
+        var activeDurationSeconds: Long = 0L
+            private set
+
+        @Volatile
+        var totalAscentMeters: Double = 0.0
+            private set
     }
 
-    private lateinit var locationManager: LocationManager
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
     private val dbExecutor = Executors.newSingleThreadExecutor()
-    private var lastSavedPoint: TrackPoint? = null
     private var lastDiskSaveTime = 0L
-    private val diskSaveIntervalMs = 60000L
+    private val diskSaveIntervalMs = 15000L // save every 15s to ensure disk-sync and gpx-refresh
+
+    private val serviceHandler = Handler(Looper.getMainLooper())
+    private val timerRunnable = object : Runnable {
+        override fun run() {
+            if (currentStatus == "RECORDING") {
+                activeDurationSeconds++
+                
+                // Save duration to database periodically
+                dbExecutor.execute {
+                    val db = AppDatabase.getDatabase(applicationContext)
+                    val track = db.trackDao().getTrackById(trackId)
+                    if (track != null) {
+                        track.durationSeconds = activeDurationSeconds
+                        db.trackDao().updateTrack(track)
+                    }
+                }
+
+                updateNotificationWithStats()
+
+                // Broadcast tick
+                val intent = Intent(ACTION_TICK).apply {
+                    putExtra(EXTRA_DURATION, activeDurationSeconds)
+                    putExtra(EXTRA_DISTANCE, totalDistanceMeters)
+                    putExtra(EXTRA_POINTS_COUNT, currentPoints.size)
+                }
+                sendBroadcast(intent)
+            }
+            serviceHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(locationResult: LocationResult) {
+            val location = locationResult.lastLocation ?: return
+            handleNewLocation(location)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
-        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         createNotificationChannel()
     }
 
@@ -84,43 +146,78 @@ class TrackService : Service(), LocationListener {
                     trackId = id
                     isRunning = true
                     currentStatus = "RECORDING"
+                    trackStartTime = System.currentTimeMillis()
+                    totalDistanceMeters = 0f
+                    activeDurationSeconds = 0L
+                    totalAscentMeters = 0.0
+                    
                     synchronized(currentPoints) {
                         currentPoints.clear()
                     }
-                    lastSavedPoint = null
                     lastDiskSaveTime = System.currentTimeMillis()
                     
-                    // Fetch existing points if any (e.g. on restore)
                     dbExecutor.execute {
                         val db = AppDatabase.getDatabase(applicationContext)
                         val points = db.trackDao().getTrackPoints(id)
                         synchronized(currentPoints) {
                             currentPoints.addAll(points)
-                            if (points.isNotEmpty()) {
-                                lastSavedPoint = points.last()
+                        }
+                        
+                        // Recalculate distance and ascent
+                        var computedDist = 0f
+                        var computedAscent = 0.0
+                        if (points.size >= 2) {
+                            for (i in 1 until points.size) {
+                                val results = FloatArray(1)
+                                Location.distanceBetween(
+                                    points[i - 1].latitude, points[i - 1].longitude,
+                                    points[i].latitude, points[i].longitude,
+                                    results
+                                )
+                                computedDist += results[0]
+
+                                val currentEle = points[i].elevation
+                                val prevEle = points[i - 1].elevation
+                                if (currentEle != null && prevEle != null) {
+                                    val diff = currentEle - prevEle
+                                    if (diff > 0.0) {
+                                        computedAscent += diff
+                                    }
+                                }
                             }
+                        }
+                        totalDistanceMeters = computedDist
+                        totalAscentMeters = computedAscent
+
+                        val track = db.trackDao().getTrackById(id)
+                        if (track != null) {
+                            activeDurationSeconds = track.durationSeconds
                         }
                     }
 
                     startForegroundServiceCompat()
                     registerLocationUpdates()
+                    
+                    serviceHandler.removeCallbacks(timerRunnable)
+                    serviceHandler.postDelayed(timerRunnable, 1000L)
                 }
             }
             ACTION_PAUSE -> {
                 currentStatus = "PAUSED"
-                updateNotification("轨迹记录已暂停")
+                updateNotificationWithStats()
                 unregisterLocationUpdates()
                 forceSaveToDisk()
             }
             ACTION_RESUME -> {
                 currentStatus = "RECORDING"
-                updateNotification("正在记录轨迹中...")
+                updateNotificationWithStats()
                 registerLocationUpdates()
                 forceSaveToDisk()
             }
             ACTION_STOP -> {
                 currentStatus = "STOPPED"
                 isRunning = false
+                serviceHandler.removeCallbacks(timerRunnable)
                 unregisterLocationUpdates()
                 forceSaveToDisk()
                 stopForeground(true)
@@ -133,69 +230,87 @@ class TrackService : Service(), LocationListener {
 
     private fun registerLocationUpdates() {
         try {
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    5000L, // minTime = 5000ms
-                    5f,    // minDistance = 5m
-                    this
-                )
-                Log.d(TAG, "Registered GPS location updates with 5s, 5m filters")
-            } else {
-                locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER,
-                    5000L,
-                    5f,
-                    this
-                )
-                Log.d(TAG, "GPS Provider disabled, using Network location updates")
-            }
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L).apply {
+                setMinUpdateIntervalMillis(1500L)
+                setMinUpdateDistanceMeters(1f)
+            }.build()
+
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+            Log.d(TAG, "Registered FusedLocationProviderClient location updates")
         } catch (e: SecurityException) {
-            Log.e(TAG, "No permission to register location updates", e)
+            Log.e(TAG, "No location permissions to request updates", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registering location updates", e)
         }
     }
 
     private fun unregisterLocationUpdates() {
-        locationManager.removeUpdates(this)
-        Log.d(TAG, "Unregistered location updates")
+        try {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+            Log.d(TAG, "Unregistered FusedLocationProviderClient location updates")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing location updates", e)
+        }
     }
 
-    override fun onLocationChanged(location: Location) {
+    private fun handleNewLocation(location: Location) {
         if (currentStatus != "RECORDING") return
 
         dbExecutor.execute {
-            val db = AppDatabase.getDatabase(applicationContext)
-            
-            // Filter: minTime = 5000ms or minDistance = 5m
-            val lastPt = lastSavedPoint
+            val lastPt = synchronized(currentPoints) { currentPoints.lastOrNull() }
             val timeDiff = location.time - (lastPt?.timestamp ?: 0L)
+            
             val distDiff = lastPt?.let {
                 val results = FloatArray(1)
                 Location.distanceBetween(it.latitude, it.longitude, location.latitude, location.longitude, results)
                 results[0]
-            } ?: Float.MAX_VALUE
+            } ?: 0f
 
-            if (lastPt == null || timeDiff >= 5000L || distDiff >= 5f) {
+            if (lastPt == null || timeDiff >= 2000L || distDiff >= 2f) {
+                val elevationVal = if (location.hasAltitude()) location.altitude else null
+                
+                if (lastPt != null) {
+                    totalDistanceMeters += distDiff
+                    
+                    val lastEle = lastPt.elevation
+                    if (elevationVal != null && lastEle != null) {
+                        val eleDiff = elevationVal - lastEle
+                        if (eleDiff > 0.0) {
+                            totalAscentMeters += eleDiff
+                        }
+                    }
+                }
+
                 val tp = TrackPoint(
                     trackId = trackId,
                     latitude = location.latitude,
                     longitude = location.longitude,
-                    elevation = if (location.hasAltitude()) location.altitude else null,
+                    elevation = elevationVal,
                     timestamp = location.time,
                     speed = if (location.hasSpeed()) location.speed else 0f,
                     accuracy = if (location.hasAccuracy()) location.accuracy else 0f
                 )
-                
+
+                val db = AppDatabase.getDatabase(applicationContext)
                 db.trackDao().insertTrackPoint(tp)
-                
+
                 synchronized(currentPoints) {
                     currentPoints.add(tp)
                 }
-                lastSavedPoint = tp
 
                 Log.d(TAG, "Recorded point: Lat ${tp.latitude}, Lon ${tp.longitude}")
 
-                // Send broadcast to update active MapActivity
+                val track = db.trackDao().getTrackById(trackId)
+                if (track != null) {
+                    track.distanceMeters = totalDistanceMeters
+                    track.pointCount = currentPoints.size
+                    db.trackDao().updateTrack(track)
+                }
+
                 val intent = Intent(ACTION_NEW_POINT).apply {
                     putExtra(EXTRA_POINT_LAT, tp.latitude)
                     putExtra(EXTRA_POINT_LON, tp.longitude)
@@ -206,7 +321,6 @@ class TrackService : Service(), LocationListener {
                 }
                 sendBroadcast(intent)
 
-                // Periodic save to .track file every 60 seconds
                 val now = System.currentTimeMillis()
                 if (now - lastDiskSaveTime >= diskSaveIntervalMs) {
                     saveTrackFile()
@@ -223,8 +337,9 @@ class TrackService : Service(), LocationListener {
         val track = db.trackDao().getTrackById(tId)
         if (track != null) {
             val pts = synchronized(currentPoints) { ArrayList(currentPoints) }
+            val anchors = db.trackDao().getPhotoAnchorsForTrack(tId)
             track.status = currentStatus
-            TrackFileHelper.saveTrackToJson(track, pts)
+            TrackFileHelper.saveTrackToJson(track, pts, anchors)
             Log.d(TAG, "Saved track to disk: ${pts.size} points")
         }
     }
@@ -236,7 +351,7 @@ class TrackService : Service(), LocationListener {
     }
 
     private fun startForegroundServiceCompat() {
-        val notification = createNotification("正在记录轨迹中...")
+        val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -244,7 +359,7 @@ class TrackService : Service(), LocationListener {
         }
     }
 
-    private fun createNotification(contentText: String): Notification {
+    private fun createNotification(): Notification {
         val notificationIntent = Intent(this, MapActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -255,9 +370,21 @@ class TrackService : Service(), LocationListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val speedText = if (currentStatus == "RECORDING") "正在记录轨迹" else "轨迹记录已暂停"
+        val formattedDist = totalDistanceMeters / 1000f
+        val formattedTime = formatDuration(activeDurationSeconds)
+        val pointsCount = synchronized(currentPoints) { currentPoints.size }
+
+        val detailText = "距离：%.2f km\n时间：%s\n轨迹点数：%d".format(
+            formattedDist,
+            formattedTime,
+            pointsCount
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("CyberTrail 轨迹记录中")
-            .setContentText(contentText)
+            .setContentTitle("CyberTrail $speedText")
+            .setContentText("距离：%.2f km | 时间：%s".format(formattedDist, formattedTime))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detailText))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -265,9 +392,16 @@ class TrackService : Service(), LocationListener {
             .build()
     }
 
-    private fun updateNotification(contentText: String) {
+    private fun updateNotificationWithStats() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, createNotification(contentText))
+        notificationManager.notify(NOTIFICATION_ID, createNotification())
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        return "%02d:%02d:%02d".format(h, m, s)
     }
 
     private fun createNotificationChannel() {
@@ -286,13 +420,10 @@ class TrackService : Service(), LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        locationManager.removeUpdates(this)
+        unregisterLocationUpdates()
         dbExecutor.shutdown()
         Log.d(TAG, "Service destroyed")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-    override fun onProviderEnabled(provider: String) {}
-    override fun onProviderDisabled(provider: String) {}
 }
