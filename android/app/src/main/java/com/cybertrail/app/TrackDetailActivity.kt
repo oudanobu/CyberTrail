@@ -214,7 +214,7 @@ class TrackDetailActivity : AppCompatActivity() {
             val totalDistanceMeters = calculateDistanceAndCumulative()
             val totalDurationSec = calculateDurationSeconds(track, points)
 
-            val elevations = points.map { it.elevation }
+            val elevations = points.mapNotNull { it.elevation }
             val maxElevation = elevations.maxOrNull() ?: 0.0
             val minElevation = elevations.minOrNull() ?: 0.0
 
@@ -226,18 +226,22 @@ class TrackDetailActivity : AppCompatActivity() {
             var totalAscent = 0.0
             var totalDescent = 0.0
             for (i in 1 until points.size) {
-                val diff = points[i].elevation - points[i - 1].elevation
-                if (diff > 0.0) {
-                    totalAscent += diff
-                } else {
-                    totalDescent += Math.abs(diff)
+                val prevEle = points[i - 1].elevation
+                val currEle = points[i].elevation
+                if (prevEle != null && currEle != null) {
+                    val diff = currEle - prevEle
+                    if (diff > 0.0) {
+                        totalAscent += diff
+                    } else {
+                        totalDescent += Math.abs(diff)
+                    }
                 }
             }
 
             // Populate Profile Chart
             val chartPoints = points.mapIndexed { idx, pt ->
                 val distKm = if (idx < cumulativeDistances.size) cumulativeDistances[idx] else 0f
-                TrackProfileChartView.ChartPoint(distKm, pt.elevation.toFloat(), pt.speed.toFloat())
+                TrackProfileChartView.ChartPoint(distKm, (pt.elevation ?: 0.0).toFloat(), pt.speed.toFloat())
             }
 
             runOnUiThread {
@@ -553,10 +557,10 @@ class TrackDetailActivity : AppCompatActivity() {
             val currentDistKm = if (replayIndex < cumulativeDistances.size) cumulativeDistances[replayIndex] else 0f
             tvReplayProgress.text = String.format(
                 Locale.US,
-                "进度: %d / %d | 海拔: %.1f m | 距离: %.2f km",
+                "进度: %d / %d | 海拔: %s m | 距离: %.2f km",
                 replayIndex + 1,
                 pts.size,
-                pt.elevation,
+                pt.elevation?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
                 currentDistKm
             )
 
