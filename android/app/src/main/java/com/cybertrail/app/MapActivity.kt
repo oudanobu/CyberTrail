@@ -4267,7 +4267,9 @@ ${finalStyleJsonString ?: "None"}
                 totalDist += stepDist
                 dists[i] = totalDist
 
-                val eleDiff = sortedPoints[i].elevation - sortedPoints[i - 1].elevation
+                val currentElevation = sortedPoints[i].elevation ?: 0.0
+                val previousElevation = sortedPoints[i - 1].elevation ?: 0.0
+                val eleDiff = currentElevation - previousElevation
                 if (eleDiff > 0.0) {
                     totalClimb += eleDiff
                 }
@@ -4332,7 +4334,7 @@ ${finalStyleJsonString ?: "None"}
 
                         tvReplayProgress.text = "进度: ${replayCurrentIndex + 1} / $size"
                         tvReplayLatLon.text = "位置: %.6f, %.6f".format(pt.latitude, pt.longitude)
-                        tvReplayEle.text = "海拔: %.1fm".format(pt.elevation)
+                        tvReplayEle.text = "海拔: %.1fm".format(pt.elevation ?: 0.0)
                         
                         val distKm = replayCumulativeDistances[replayCurrentIndex] / 1000.0
                         val totalDistKm = replayCumulativeDistances[size - 1] / 1000.0
