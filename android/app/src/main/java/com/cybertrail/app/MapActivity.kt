@@ -65,12 +65,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.pm.PackageManager
 import android.provider.MediaStore
 import android.os.Build
 import androidx.core.content.ContextCompat
-import android.Manifest
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
@@ -1396,7 +1393,7 @@ ${finalStyleJsonString ?: "None"}
             currentTrackId = com.cybertrail.app.gis.TrackForegroundService.trackId
             trackStatus = com.cybertrail.app.gis.TrackForegroundService.currentStatus
             trackStartTime = com.cybertrail.app.gis.TrackForegroundService.trackStartTime
-            trackTotalSeconds = com.cybertrail.app.gis.TrackForegroundService.activeDurationSeconds
+            trackTotalSeconds = com.cybertrail.app.gis.TrackForegroundService.elapsedSeconds
             synchronized(currentTrackPoints) {
                 currentTrackPoints.clear()
                 currentTrackPoints.addAll(com.cybertrail.app.gis.TrackForegroundService.currentPoints)
@@ -2603,99 +2600,113 @@ ${finalStyleJsonString ?: "None"}
         refreshTrackList()
 
         // Restore track on startup with option dialog
-        dbExecutor.execute {
-            val uncompletedFiles = TrackFileHelper.scanUncompletedTrackFiles()
-            if (uncompletedFiles.isNotEmpty()) {
-                val file = uncompletedFiles.first()
-                val parsed = TrackFileHelper.readTrackFromJson(file)
-                if (parsed != null) {
-                    val track = parsed.first
-                    val points = parsed.second
-                    val photoAnchors = parsed.third
-                    
-                    runOnUiThread {
-                        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                            .setTitle("发现未正常结束的轨迹记录")
-                            .setMessage("系统检测到上次有未正常结束的轨迹记录，是否恢复并继续记录？\n\n轨迹名称: ${track.name ?: "未命名轨迹"}\n点数: ${points.size}")
-                            .setCancelable(false)
-                            .setPositiveButton("恢复") { _, _ ->
-                                dbExecutor.execute {
-                                    // Make sure it exists/updated in Room
-                                    val existing = trackDao.getTrackById(track.id)
-                                    if (existing == null) {
-                                        trackDao.insertTrack(track)
-                                        trackDao.insertTrackPoints(points)
-                                        for (anchor in photoAnchors) {
-                                            trackDao.insertPhotoAnchor(anchor)
+        if (com.cybertrail.app.gis.TrackForegroundService.isRunning) {
+            currentTrackId = com.cybertrail.app.gis.TrackForegroundService.trackId
+            trackStatus = com.cybertrail.app.gis.TrackForegroundService.currentStatus
+            trackStartTime = com.cybertrail.app.gis.TrackForegroundService.trackStartTime
+            trackTotalSeconds = com.cybertrail.app.gis.TrackForegroundService.elapsedSeconds
+            synchronized(currentTrackPoints) {
+                currentTrackPoints.clear()
+                currentTrackPoints.addAll(com.cybertrail.app.gis.TrackForegroundService.currentPoints)
+            }
+            updateTrackUi()
+            drawTrackOnMap()
+            updateTrackStatsUi()
+        } else {
+            dbExecutor.execute {
+                val uncompletedFiles = TrackFileHelper.scanUncompletedTrackFiles()
+                if (uncompletedFiles.isNotEmpty()) {
+                    val file = uncompletedFiles.first()
+                    val parsed = TrackFileHelper.readTrackFromJson(file)
+                    if (parsed != null) {
+                        val track = parsed.first
+                        val points = parsed.second
+                        val photoAnchors = parsed.third
+                        
+                        runOnUiThread {
+                            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                                .setTitle("发现未正常结束的轨迹记录")
+                                .setMessage("系统检测到上次有未正常结束的轨迹记录，是否恢复并继续记录？\n\n轨迹名称: ${track.name ?: "未命名轨迹"}\n点数: ${points.size}")
+                                .setCancelable(false)
+                                .setPositiveButton("恢复") { _, _ ->
+                                    dbExecutor.execute {
+                                        // Make sure it exists/updated in Room
+                                        val existing = trackDao.getTrackById(track.id)
+                                        if (existing == null) {
+                                            trackDao.insertTrack(track)
+                                            trackDao.insertTrackPoints(points)
+                                            for (anchor in photoAnchors) {
+                                                trackDao.insertPhotoAnchor(anchor)
+                                            }
+                                        } else {
+                                            existing.status = track.status
+                                            trackDao.updateTrack(existing)
                                         }
-                                    } else {
-                                        existing.status = track.status
-                                        trackDao.updateTrack(existing)
-                                    }
-                                    
-                                    runOnUiThread {
-                                        currentTrackId = track.id
-                                        trackStatus = track.status
-                                        trackStartTime = track.startTime
-                                        trackTotalSeconds = (System.currentTimeMillis() - track.startTime) / 1000L
-                                        if (trackTotalSeconds < 0) trackTotalSeconds = 0L
+                                        
+                                        runOnUiThread {
+                                            currentTrackId = track.id
+                                            trackStatus = track.status
+                                            trackStartTime = track.startTime
+                                            trackTotalSeconds = (System.currentTimeMillis() - track.startTime) / 1000L
+                                            if (trackTotalSeconds < 0) trackTotalSeconds = 0L
 
-                                        currentTrackPoints.clear()
-                                        currentTrackPoints.addAll(points)
+                                            currentTrackPoints.clear()
+                                            currentTrackPoints.addAll(points)
 
-                                        updateTrackUi()
-                                        drawTrackOnMap()
-                                        drawPhotoAnchorsOnMap()
+                                            updateTrackUi()
+                                            drawTrackOnMap()
+                                            drawPhotoAnchorsOnMap()
 
-                                        // Restart background runnables
-                                        mainHandler.removeCallbacks(saveRunnable)
-                                        mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+                                            // Restart background runnables
+                                            mainHandler.removeCallbacks(saveRunnable)
+                                            mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
 
-                                        mainHandler.removeCallbacks(durationRunnable)
-                                        mainHandler.post(durationRunnable)
+                                            mainHandler.removeCallbacks(durationRunnable)
+                                            mainHandler.post(durationRunnable)
 
-                                        Toast.makeText(this, "轨迹记录已恢复，继续记录中", Toast.LENGTH_SHORT).show()
-                                        refreshTrackList()
+                                            Toast.makeText(this, "轨迹记录已恢复，继续记录中", Toast.LENGTH_SHORT).show()
+                                            refreshTrackList()
+                                        }
                                     }
                                 }
-                            }
-                            .setNegativeButton("丢弃") { _, _ ->
-                                dbExecutor.execute {
-                                    // Delete from disk & database
-                                    TrackFileHelper.deleteTrackJsonFile(track.id)
-                                    trackDao.deleteTrackById(track.id)
-                                    runOnUiThread {
-                                        Toast.makeText(this, "未完成的轨迹记录已丢弃", Toast.LENGTH_SHORT).show()
-                                        refreshTrackList()
+                                .setNegativeButton("丢弃") { _, _ ->
+                                    dbExecutor.execute {
+                                        // Delete from disk & database
+                                        TrackFileHelper.deleteTrackJsonFile(track.id)
+                                        trackDao.deleteTrackById(track.id)
+                                        runOnUiThread {
+                                            Toast.makeText(this, "未完成的轨迹记录已丢弃", Toast.LENGTH_SHORT).show()
+                                            refreshTrackList()
+                                        }
                                     }
                                 }
-                            }
-                            .show()
+                                .show()
+                        }
                     }
-                }
-            } else {
-                // Fallback: Check if active track exists in local Room DB just in case
-                val activeTrack = trackDao.getActiveTrack()
-                if (activeTrack != null) {
-                    val points = trackDao.getTrackPoints(activeTrack.id)
-                    runOnUiThread {
-                        currentTrackId = activeTrack.id
-                        trackStatus = activeTrack.status
-                        trackStartTime = activeTrack.startTime
-                        trackTotalSeconds = (System.currentTimeMillis() - activeTrack.startTime) / 1000L
-                        if (trackTotalSeconds < 0) trackTotalSeconds = 0L
+                } else {
+                    // Fallback: Check if active track exists in local Room DB just in case
+                    val activeTrack = trackDao.getActiveTrack()
+                    if (activeTrack != null) {
+                        val points = trackDao.getTrackPoints(activeTrack.id)
+                        runOnUiThread {
+                            currentTrackId = activeTrack.id
+                            trackStatus = activeTrack.status
+                            trackStartTime = activeTrack.startTime
+                            trackTotalSeconds = (System.currentTimeMillis() - activeTrack.startTime) / 1000L
+                            if (trackTotalSeconds < 0) trackTotalSeconds = 0L
 
-                        currentTrackPoints.clear()
-                        currentTrackPoints.addAll(points)
+                            currentTrackPoints.clear()
+                            currentTrackPoints.addAll(points)
 
-                        updateTrackUi()
-                        drawTrackOnMap()
+                            updateTrackUi()
+                            drawTrackOnMap()
 
-                        mainHandler.removeCallbacks(saveRunnable)
-                        mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
+                            mainHandler.removeCallbacks(saveRunnable)
+                            mainHandler.postDelayed(saveRunnable, trackSaveIntervalMs)
 
-                        mainHandler.removeCallbacks(durationRunnable)
-                        mainHandler.post(durationRunnable)
+                            mainHandler.removeCallbacks(durationRunnable)
+                            mainHandler.post(durationRunnable)
+                        }
                     }
                 }
             }

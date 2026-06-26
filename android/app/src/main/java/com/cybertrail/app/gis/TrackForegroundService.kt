@@ -74,6 +74,18 @@ class TrackForegroundService : Service() {
             private set
 
         @Volatile
+        var elapsedSeconds: Long = 0L
+            internal set
+
+        @Volatile
+        var currentDistanceMeters: Float = 0f
+            internal set
+
+        @Volatile
+        var currentPointCount: Int = 0
+            internal set
+
+        @Volatile
         var totalDistanceMeters: Float = 0f
             private set
 
@@ -95,25 +107,16 @@ class TrackForegroundService : Service() {
     private val timerRunnable = object : Runnable {
         override fun run() {
             if (currentStatus == "RECORDING") {
-                activeDurationSeconds++
+                elapsedSeconds++
+                activeDurationSeconds = elapsedSeconds
                 
-                // Save duration to database periodically
-                dbExecutor.execute {
-                    val db = AppDatabase.getDatabase(applicationContext)
-                    val track = db.trackDao().getTrackById(trackId)
-                    if (track != null) {
-                        track.durationSeconds = activeDurationSeconds
-                        db.trackDao().updateTrack(track)
-                    }
-                }
-
                 updateNotificationWithStats()
 
                 // Broadcast tick
                 val intent = Intent(ACTION_TICK).apply {
-                    putExtra(EXTRA_DURATION, activeDurationSeconds)
-                    putExtra(EXTRA_DISTANCE, totalDistanceMeters)
-                    putExtra(EXTRA_POINTS_COUNT, currentPoints.size)
+                    putExtra(EXTRA_DURATION, elapsedSeconds)
+                    putExtra(EXTRA_DISTANCE, currentDistanceMeters)
+                    putExtra(EXTRA_POINTS_COUNT, currentPointCount)
                 }
                 sendBroadcast(intent)
             }
@@ -147,6 +150,9 @@ class TrackForegroundService : Service() {
                     isRunning = true
                     currentStatus = "RECORDING"
                     trackStartTime = System.currentTimeMillis()
+                    elapsedSeconds = 0L
+                    currentDistanceMeters = 0f
+                    currentPointCount = 0
                     totalDistanceMeters = 0f
                     activeDurationSeconds = 0L
                     totalAscentMeters = 0.0
@@ -186,12 +192,17 @@ class TrackForegroundService : Service() {
                                 }
                             }
                         }
+                        currentDistanceMeters = computedDist
                         totalDistanceMeters = computedDist
                         totalAscentMeters = computedAscent
+                        currentPointCount = points.size
 
                         val track = db.trackDao().getTrackById(id)
                         if (track != null) {
-                            activeDurationSeconds = track.durationSeconds
+                            trackStartTime = track.startTime
+                            val calculatedElapsed = (System.currentTimeMillis() - track.startTime) / 1000L
+                            elapsedSeconds = if (calculatedElapsed < 0) 0L else calculatedElapsed
+                            activeDurationSeconds = elapsedSeconds
                         }
                     }
 
@@ -275,6 +286,7 @@ class TrackForegroundService : Service() {
                 
                 if (lastPt != null) {
                     totalDistanceMeters += distDiff
+                    currentDistanceMeters = totalDistanceMeters
                     
                     val lastEle = lastPt.elevation
                     if (elevationVal != null && lastEle != null) {
@@ -300,16 +312,10 @@ class TrackForegroundService : Service() {
 
                 synchronized(currentPoints) {
                     currentPoints.add(tp)
+                    currentPointCount = currentPoints.size
                 }
 
                 Log.d(TAG, "Recorded point: Lat ${tp.latitude}, Lon ${tp.longitude}")
-
-                val track = db.trackDao().getTrackById(trackId)
-                if (track != null) {
-                    track.distanceMeters = totalDistanceMeters
-                    track.pointCount = currentPoints.size
-                    db.trackDao().updateTrack(track)
-                }
 
                 val intent = Intent(ACTION_NEW_POINT).apply {
                     putExtra(EXTRA_POINT_LAT, tp.latitude)
@@ -370,20 +376,19 @@ class TrackForegroundService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val speedText = if (currentStatus == "RECORDING") "正在记录轨迹" else "轨迹记录已暂停"
-        val formattedDist = totalDistanceMeters / 1000f
-        val formattedTime = formatDuration(activeDurationSeconds)
-        val pointsCount = synchronized(currentPoints) { currentPoints.size }
+        val titleText = if (currentStatus == "RECORDING") "CyberTrail 正在记录轨迹" else "CyberTrail 轨迹记录已暂停"
+        val formattedDist = currentDistanceMeters / 1000f
+        val formattedTime = formatDuration(elapsedSeconds)
 
-        val detailText = "距离：%.2f km\n时间：%s\n轨迹点数：%d".format(
-            formattedDist,
+        val detailText = "时间：%s\n距离：%.2f km\n轨迹点：%d".format(
             formattedTime,
-            pointsCount
+            formattedDist,
+            currentPointCount
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("CyberTrail $speedText")
-            .setContentText("距离：%.2f km | 时间：%s".format(formattedDist, formattedTime))
+            .setContentTitle(titleText)
+            .setContentText("时间：%s | 距离：%.2f km | 轨迹点：%d".format(formattedTime, formattedDist, currentPointCount))
             .setStyle(NotificationCompat.BigTextStyle().bigText(detailText))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
