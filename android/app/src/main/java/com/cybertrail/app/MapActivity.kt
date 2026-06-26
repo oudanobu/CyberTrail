@@ -178,6 +178,34 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var cbLayerWaypoint: android.widget.CheckBox
     private lateinit var cbLayerPhoto: android.widget.CheckBox
 
+    // Track Replay UI Controls
+    private lateinit var panelTrackReplay: LinearLayout
+    private lateinit var tvReplayStatus: TextView
+    private lateinit var tvReplayProgress: TextView
+    private lateinit var tvReplayLatLon: TextView
+    private lateinit var tvReplayEle: TextView
+    private lateinit var tvReplayDistance: TextView
+    private lateinit var tvReplayClimb: TextView
+    private lateinit var tvReplaySpeed: TextView
+    private lateinit var tvReplayTime: TextView
+    private lateinit var btnReplayPlayPause: TextView
+    private lateinit var btnReplayStop: TextView
+    private lateinit var btnReplaySpeed1: TextView
+    private lateinit var btnReplaySpeed2: TextView
+    private lateinit var btnReplaySpeed5: TextView
+
+    // Track Replay State variables
+    private var isReplayActive = false
+    private var isReplayPlaying = false
+    private var replaySpeedMultiplier = 1 // 1, 2, 5
+    private var replayPoints: List<TrackPoint> = emptyList()
+    private var replayCurrentIndex = 0
+    private var replayMarker: com.mapbox.mapboxsdk.annotations.Marker? = null
+    private var replayCumulativeClimbs = DoubleArray(0)
+    private var replayCumulativeDistances = DoubleArray(0)
+    private val replayHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var replayRunnable: Runnable? = null
+
     private var isTrackLayerEnabled = true
     private var isWaypointLayerEnabled = true
     private var isPhotoLayerEnabled = true
@@ -544,6 +572,7 @@ ${finalStyleJsonString ?: "None"}
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
         initTrackRecording()
+        initTrackReplay()
         runOfflineDiagnostics()
         startGpsTracking()
     }
@@ -2998,13 +3027,15 @@ ${finalStyleJsonString ?: "None"}
                         }
                         itemLayout.addView(tvStats)
 
-                        // Action Buttons
-                        val btnLayout = LinearLayout(this).apply {
+                        // Action Buttons Row 1
+                        val btnLayout1 = LinearLayout(this).apply {
                             orientation = LinearLayout.HORIZONTAL
                             layoutParams = LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                 LinearLayout.LayoutParams.WRAP_CONTENT
-                            )
+                            ).apply {
+                                setMargins(0, 0, 0, (4 * density).toInt())
+                            }
                         }
 
                         // Map show button
@@ -3014,27 +3045,45 @@ ${finalStyleJsonString ?: "None"}
                         val mapBtn = createActionButton(mapBtnText, mapBtnColor, mapBtnBg) {
                             toggleLoadedTrackOnMap(track)
                         }
-                        btnLayout.addView(mapBtn)
+                        btnLayout1.addView(mapBtn)
 
                         // Rename button
                         val renameBtn = createActionButton("✏️ 重命名", 0xFFF59E0B.toInt(), 0x1AF59E0B) {
                             showRenameTrackDialog(track)
                         }
-                        btnLayout.addView(renameBtn)
+                        btnLayout1.addView(renameBtn)
 
                         // Export button
                         val exportBtn = createActionButton("📤 GPX", 0xFF10B981.toInt(), 0x1A10B981) {
                             exportTrackToGpx(track)
                         }
-                        btnLayout.addView(exportBtn)
+                        btnLayout1.addView(exportBtn)
+
+                        // Action Buttons Row 2
+                        val btnLayout2 = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+
+                        // Replay button
+                        val replayBtnColor = 0xFF0F172A.toInt()
+                        val replayBtnBg = 0xFF22D3EE.toInt() // Cyan theme
+                        val replayBtn = createActionButton("▶ 回放", replayBtnColor, replayBtnBg) {
+                            startReplay(track)
+                        }
+                        btnLayout2.addView(replayBtn)
 
                         // Delete button
                         val deleteBtn = createActionButton("🗑 删除", 0xFFEF4444.toInt(), 0x1AEF4444) {
                             showDeleteTrackDialog(track)
                         }
-                        btnLayout.addView(deleteBtn)
+                        btnLayout2.addView(deleteBtn)
 
-                        itemLayout.addView(btnLayout)
+                        itemLayout.addView(btnLayout1)
+                        itemLayout.addView(btnLayout2)
                         trackListContainer.addView(itemLayout)
                     }
                 }
@@ -4149,4 +4198,270 @@ ${finalStyleJsonString ?: "None"}
         val pointCount: Int,
         val distanceMeters: Float
     )
+
+    private fun initTrackReplay() {
+        panelTrackReplay = findViewById(R.id.panel_track_replay)
+        tvReplayStatus = findViewById(R.id.tv_replay_status)
+        tvReplayProgress = findViewById(R.id.tv_replay_progress)
+        tvReplayLatLon = findViewById(R.id.tv_replay_latlon)
+        tvReplayEle = findViewById(R.id.tv_replay_ele)
+        tvReplayDistance = findViewById(R.id.tv_replay_distance)
+        tvReplayClimb = findViewById(R.id.tv_replay_climb)
+        tvReplaySpeed = findViewById(R.id.tv_replay_speed)
+        tvReplayTime = findViewById(R.id.tv_replay_time)
+        btnReplayPlayPause = findViewById(R.id.btn_replay_play_pause)
+        btnReplayStop = findViewById(R.id.btn_replay_stop)
+        btnReplaySpeed1 = findViewById(R.id.btn_replay_speed_1)
+        btnReplaySpeed2 = findViewById(R.id.btn_replay_speed_2)
+        btnReplaySpeed5 = findViewById(R.id.btn_replay_speed_5)
+
+        btnReplayPlayPause.setOnClickListener { toggleReplayPlayPause() }
+        btnReplayStop.setOnClickListener { stopReplay() }
+        btnReplaySpeed1.setOnClickListener {
+            replaySpeedMultiplier = 1
+            updateReplaySpeedUi()
+        }
+        btnReplaySpeed2.setOnClickListener {
+            replaySpeedMultiplier = 2
+            updateReplaySpeedUi()
+        }
+        btnReplaySpeed5.setOnClickListener {
+            replaySpeedMultiplier = 5
+            updateReplaySpeedUi()
+        }
+    }
+
+    private fun startReplay(track: Track) {
+        if (trackStatus == "RECORDING") {
+            Toast.makeText(this, "当前正在记录轨迹，请先结束记录再进行回放", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Close drawer so map is fully visible
+        val drawer = findViewById<androidx.drawerlayout.widget.DrawerLayout>(R.id.drawer_layout)
+        drawer.closeDrawers()
+
+        Toast.makeText(this, "正在初始化回放系统...", Toast.LENGTH_SHORT).show()
+
+        dbExecutor.execute {
+            val points = trackDao.getTrackPoints(track.id)
+            if (points.isEmpty()) {
+                runOnUiThread {
+                    Toast.makeText(this, "该轨迹无有效定位点，无法回放", Toast.LENGTH_SHORT).show()
+                }
+                return@execute
+            }
+
+            val sortedPoints = points.sortedBy { it.timestamp }
+            val size = sortedPoints.size
+            val dists = DoubleArray(size)
+            val climbs = DoubleArray(size)
+
+            var totalDist = 0.0
+            var totalClimb = 0.0
+            dists[0] = 0.0
+            climbs[0] = 0.0
+
+            for (i in 1 until size) {
+                val stepDist = getDistanceBetweenPoints(sortedPoints[i - 1], sortedPoints[i]).toDouble()
+                totalDist += stepDist
+                dists[i] = totalDist
+
+                val eleDiff = sortedPoints[i].elevation - sortedPoints[i - 1].elevation
+                if (eleDiff > 0.0) {
+                    totalClimb += eleDiff
+                }
+                climbs[i] = totalClimb
+            }
+
+            runOnUiThread {
+                isReplayActive = true
+                isReplayPlaying = true
+                replaySpeedMultiplier = 1
+                replayPoints = sortedPoints
+                replayCurrentIndex = 0
+                replayCumulativeDistances = dists
+                replayCumulativeClimbs = climbs
+
+                findViewById<View>(R.id.panel_track_control).visibility = View.GONE
+                panelTrackReplay.visibility = View.VISIBLE
+
+                if (loadedTrackId != track.id) {
+                    toggleLoadedTrackOnMap(track)
+                }
+
+                val firstPt = sortedPoints[0]
+                val firstLatLng = com.mapbox.mapboxsdk.geometry.LatLng(firstPt.latitude, firstPt.longitude)
+                mapboxMap?.easeCamera(
+                    com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngZoom(firstLatLng, 15.0),
+                    1000
+                )
+
+                replayMarker?.let { mapboxMap?.removeMarker(it) }
+                val markerOptions = com.mapbox.mapboxsdk.annotations.MarkerOptions()
+                    .position(firstLatLng)
+                    .icon(createReplayIconBitmap())
+                    .title("ReplayMarker")
+                replayMarker = mapboxMap?.addMarker(markerOptions)
+
+                updateReplaySpeedUi()
+                updateReplayControlsUi()
+
+                startReplayTicks()
+            }
+        }
+    }
+
+    private fun startReplayTicks() {
+        replayRunnable?.let { replayHandler.removeCallbacks(it) }
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!isReplayActive) return
+
+                if (isReplayPlaying) {
+                    val size = replayPoints.size
+                    if (replayCurrentIndex < size) {
+                        val pt = replayPoints[replayCurrentIndex]
+
+                        val latLng = com.mapbox.mapboxsdk.geometry.LatLng(pt.latitude, pt.longitude)
+                        replayMarker?.position = latLng
+
+                        mapboxMap?.moveCamera(
+                            com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLng(latLng)
+                        )
+
+                        tvReplayProgress.text = "进度: ${replayCurrentIndex + 1} / $size"
+                        tvReplayLatLon.text = "位置: %.6f, %.6f".format(pt.latitude, pt.longitude)
+                        tvReplayEle.text = "海拔: %.1fm".format(pt.elevation)
+                        
+                        val distKm = replayCumulativeDistances[replayCurrentIndex] / 1000.0
+                        val totalDistKm = replayCumulativeDistances[size - 1] / 1000.0
+                        tvReplayDistance.text = "已播: %.2fkm / %.2fkm".format(distKm, totalDistKm)
+                        
+                        tvReplayClimb.text = "累计爬升: +%.0fm".format(replayCumulativeClimbs[replayCurrentIndex])
+                        tvReplaySpeed.text = "速度: %.1f m/s".format(pt.speed)
+
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                        tvReplayTime.text = "时间: ${sdf.format(java.util.Date(pt.timestamp))}"
+
+                        checkAndTriggerPhotoAnchorForTimestamp(pt.timestamp)
+
+                        replayCurrentIndex += replaySpeedMultiplier
+                        if (replayCurrentIndex >= size) {
+                            replayCurrentIndex = size - 1
+                            isReplayPlaying = false
+                            Toast.makeText(this@MapActivity, "回放已完成", Toast.LENGTH_SHORT).show()
+                            updateReplayControlsUi()
+                        }
+                    }
+                }
+
+                replayHandler.postDelayed(this, 200L)
+            }
+        }
+        replayRunnable = runnable
+        replayHandler.post(runnable)
+    }
+
+    private fun stopReplay() {
+        isReplayActive = false
+        isReplayPlaying = false
+        replayRunnable?.let { replayHandler.removeCallbacks(it) }
+        replayRunnable = null
+
+        replayMarker?.let {
+            mapboxMap?.removeMarker(it)
+            replayMarker = null
+        }
+
+        panelTrackReplay.visibility = View.GONE
+        findViewById<View>(R.id.panel_track_control).visibility = View.VISIBLE
+
+        Toast.makeText(this, "回放已停止", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun toggleReplayPlayPause() {
+        if (!isReplayActive) return
+        val size = replayPoints.size
+        if (replayCurrentIndex >= size - 1) {
+            replayCurrentIndex = 0
+        }
+        isReplayPlaying = !isReplayPlaying
+        updateReplayControlsUi()
+    }
+
+    private fun updateReplayControlsUi() {
+        if (isReplayPlaying) {
+            btnReplayPlayPause.text = "⏸ 暂停"
+            btnReplayPlayPause.setTextColor(0xFFF59E0B.toInt())
+            btnReplayPlayPause.setBackgroundResource(R.drawable.track_btn_amber_bg)
+            tvReplayStatus.text = "👁 轨迹回放: 播放中"
+        } else {
+            btnReplayPlayPause.text = "▶ 播放"
+            btnReplayPlayPause.setTextColor(0xFF10B981.toInt())
+            btnReplayPlayPause.setBackgroundResource(R.drawable.track_btn_green_bg)
+            tvReplayStatus.text = "👁 轨迹回放: 暂停"
+        }
+    }
+
+    private fun updateReplaySpeedUi() {
+        val density = resources.displayMetrics.density
+        val activeBg = 0xFF38BDF8.toInt()
+        val activeText = 0xFF0F172A.toInt()
+        val inactiveBg = 0x1A38BDF8
+        val inactiveText = 0xFF38BDF8.toInt()
+
+        btnReplaySpeed1.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(if (replaySpeedMultiplier == 1) activeBg else inactiveBg)
+            cornerRadius = 4 * density
+        }
+        btnReplaySpeed1.setTextColor(if (replaySpeedMultiplier == 1) activeText else inactiveText)
+
+        btnReplaySpeed2.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(if (replaySpeedMultiplier == 2) activeBg else inactiveBg)
+            cornerRadius = 4 * density
+        }
+        btnReplaySpeed2.setTextColor(if (replaySpeedMultiplier == 2) activeText else inactiveText)
+
+        btnReplaySpeed5.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(if (replaySpeedMultiplier == 5) activeBg else inactiveBg)
+            cornerRadius = 4 * density
+        }
+        btnReplaySpeed5.setTextColor(if (replaySpeedMultiplier == 5) activeText else inactiveText)
+    }
+
+    private fun createReplayIconBitmap(): com.mapbox.mapboxsdk.annotations.Icon {
+        val density = resources.displayMetrics.density
+        val size = (24 * density).toInt()
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+        }
+
+        paint.color = 0xFF22D3EE.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+
+        paint.color = 0xFF1E3A8A.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, (size / 2f) - (2 * density), paint)
+
+        paint.color = 0xFF3B82F6.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, (size / 2f) - (4 * density), paint)
+
+        val iconFactory = com.mapbox.mapboxsdk.annotations.IconFactory.getInstance(this)
+        return iconFactory.fromBitmap(bitmap)
+    }
+
+    private fun getDistanceBetweenPoints(pt1: TrackPoint, pt2: TrackPoint): Float {
+        val results = FloatArray(1)
+        Location.distanceBetween(pt1.latitude, pt1.longitude, pt2.latitude, pt2.longitude, results)
+        return results[0]
+    }
+
+    private fun checkAndTriggerPhotoAnchorForTimestamp(timestamp: Long) {
+        // Reserved for Phase 3 Photo Popup feature.
+        // Queries PhotoAnchor at/near the given timestamp, and triggers popup when found.
+        Log.d(TAG, "Replay timeline reached timestamp: $timestamp, checking for associated PhotoAnchor...")
+    }
 }
