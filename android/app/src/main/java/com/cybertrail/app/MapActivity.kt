@@ -3688,31 +3688,48 @@ ${finalStyleJsonString ?: "None"}
             var elevation: Double? = null
 
             try {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    val exifInterface = androidx.exifinterface.media.ExifInterface(input)
-                    
-                    val latLong = exifInterface.latLong
-                    if (latLong != null && latLong.size >= 2) {
-                        lat = latLong[0]
-                        lon = latLong[1]
-                    }
+                // Read EXIF from the saved destination file, which supports random seeking and is highly compatible
+                val exifInterface = androidx.exifinterface.media.ExifInterface(destFile.absolutePath)
+                
+                val rawLat = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_GPS_LATITUDE)
+                val rawLon = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_GPS_LONGITUDE)
+                val latRef = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_GPS_LATITUDE_REF)
+                val lonRef = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_GPS_LONGITUDE_REF)
 
-                    val alt = exifInterface.getAltitude(0.0)
-                    if (alt != 0.0) {
-                        elevation = alt
-                    }
+                Log.d(TAG, "读取文件: ${destFile.absolutePath}")
+                Log.d(TAG, "TAG_GPS_LATITUDE: $rawLat")
+                Log.d(TAG, "TAG_GPS_LONGITUDE: $rawLon")
+                Log.d(TAG, "TAG_GPS_LATITUDE_REF: $latRef")
+                Log.d(TAG, "TAG_GPS_LONGITUDE_REF: $lonRef")
 
-                    val dateStr = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
-                        ?: exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME)
-                    if (dateStr != null) {
-                        val exSdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
-                        exSdf.parse(dateStr)?.let {
-                            timestamp = it.time
-                        }
+                val latLong = exifInterface.latLong
+                Log.d(TAG, "ExifInterface.latLong: ${latLong?.joinToString(", ")}")
+
+                if (latLong != null && latLong.size >= 2) {
+                    lat = latLong[0]
+                    lon = latLong[1]
+                    Log.d(TAG, "lat=$lat")
+                    Log.d(TAG, "lon=$lon")
+                } else {
+                    Log.d(TAG, "GPS Parse Failed")
+                }
+
+                val alt = exifInterface.getAltitude(0.0)
+                if (alt != 0.0) {
+                    elevation = alt
+                }
+
+                val dateStr = exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exifInterface.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME)
+                if (dateStr != null) {
+                    val exSdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
+                    exSdf.parse(dateStr)?.let {
+                        timestamp = it.time
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error reading EXIF from $uri", e)
+                Log.e(TAG, "Error reading EXIF from file ${destFile.absolutePath}", e)
+                Log.d(TAG, "GPS Parse Failed")
             }
 
             val thumbPath = generateThumbnail(destFile, anchorId)
