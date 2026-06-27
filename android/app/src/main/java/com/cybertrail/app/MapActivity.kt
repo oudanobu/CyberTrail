@@ -193,6 +193,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var cbLayerTrack: android.widget.CheckBox
     private lateinit var cbLayerWaypoint: android.widget.CheckBox
     private lateinit var cbLayerPhoto: android.widget.CheckBox
+    private lateinit var cbLayerRoute: android.widget.CheckBox
+
+    private var isRouteLayerEnabled = true
+    private var activeRoute: com.cybertrail.app.db.RouteEntity? = null
+    private val routeWaypoints = mutableListOf<com.cybertrail.app.db.WaypointEntity>()
+    private var routeCurrentTargetIndex = 0
+    private var isRouteNavigationActive = false
+    private var alerted100m = false
+    private var alerted50m = false
 
     // Track Replay UI Controls
     private lateinit var panelTrackReplay: LinearLayout
@@ -1089,6 +1098,7 @@ ${finalStyleJsonString ?: "None"}
                     runCameraForcedTest(map)
                     updateDiagnosticHud()
                     enableLocationComponent(style)
+                    drawRouteOnMap()
                 }
             } else {
                 // Load OSM fallback map
@@ -1124,6 +1134,7 @@ ${finalStyleJsonString ?: "None"}
                     runCameraForcedTest(map)
                     updateDiagnosticHud()
                     enableLocationComponent(style)
+                    drawRouteOnMap()
                 }
             }
         } catch (e: Exception) {
@@ -1466,6 +1477,13 @@ ${finalStyleJsonString ?: "None"}
             )
             intent.removeExtra("center_latitude")
             intent.removeExtra("center_longitude")
+        }
+        if (intent.hasExtra("plot_route_id")) {
+            val routeId = intent.getStringExtra("plot_route_id")
+            if (routeId != null) {
+                loadRouteAndPlot(routeId, startNav = true)
+            }
+            intent.removeExtra("plot_route_id")
         }
     }
 
@@ -2628,6 +2646,7 @@ ${finalStyleJsonString ?: "None"}
         cbLayerTrack = findViewById(R.id.cb_layer_track)
         cbLayerWaypoint = findViewById(R.id.cb_layer_waypoint)
         cbLayerPhoto = findViewById(R.id.cb_layer_photo)
+        cbLayerRoute = findViewById(R.id.cb_layer_route)
 
         cbLayerTrack.setOnCheckedChangeListener { _, isChecked ->
             isTrackLayerEnabled = isChecked
@@ -2655,6 +2674,11 @@ ${finalStyleJsonString ?: "None"}
         cbLayerPhoto.setOnCheckedChangeListener { _, isChecked ->
             isPhotoLayerEnabled = isChecked
             drawPhotoAnchorsOnMap()
+        }
+
+        cbLayerRoute.setOnCheckedChangeListener { _, isChecked ->
+            isRouteLayerEnabled = isChecked
+            drawRouteOnMap()
         }
 
         // Load track history list on startup
@@ -3464,6 +3488,12 @@ ${finalStyleJsonString ?: "None"}
             val intent = Intent(this, WaypointManagerActivity::class.java)
             startActivity(intent)
         }
+
+        val btnOpenRouteManager: View = findViewById(R.id.btn_open_route_manager)
+        btnOpenRouteManager.setOnClickListener {
+            val intent = Intent(this, RouteManagerActivity::class.java)
+            startActivity(intent)
+        }
     }
 
     private fun getEmojiForIconType(iconType: String): String {
@@ -3813,8 +3843,220 @@ ${finalStyleJsonString ?: "None"}
 
     private fun stopNavigation() {
         navigationTargetWaypoint = null
+        isRouteNavigationActive = false
+        activeRoute = null
+        routeWaypoints.clear()
         panelNavigation.visibility = View.GONE
+        drawRouteOnMap()
         Toast.makeText(this, "导航已结束", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun drawRouteOnMap() {
+        val style = mapboxMap?.style ?: return
+        
+        if (!isRouteLayerEnabled || activeRoute == null || routeWaypoints.isEmpty()) {
+            runOnUiThread {
+                try {
+                    val source = style.getSource("route-source") as? GeoJsonSource
+                    source?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error clearing route from map", e)
+                }
+            }
+            return
+        }
+
+        val points = routeWaypoints.map {
+            Point.fromLngLat(it.longitude, it.latitude)
+        }
+
+        val lineString = if (points.size >= 2) {
+            LineString.fromLngLats(points)
+        } else {
+            null
+        }
+
+        runOnUiThread {
+            try {
+                var source = style.getSource("route-source") as? GeoJsonSource
+                if (source == null) {
+                    source = GeoJsonSource("route-source")
+                    style.addSource(source)
+                }
+
+                if (lineString != null) {
+                    source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+                } else {
+                    source.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+                }
+
+                var layer = style.getLayer("route-layer") as? LineLayer
+                if (layer == null) {
+                    layer = LineLayer("route-layer", "route-source")
+                    layer.setProperties(
+                        PropertyFactory.lineColor(android.graphics.Color.BLUE),
+                        PropertyFactory.lineWidth(5f),
+                        PropertyFactory.lineCap(com.mapbox.mapboxsdk.style.layers.Property.LINE_CAP_ROUND),
+                        PropertyFactory.lineJoin(com.mapbox.mapboxsdk.style.layers.Property.LINE_JOIN_ROUND)
+                    )
+                    style.addLayer(layer)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error drawing route on map", e)
+            }
+        }
+    }
+
+    private fun loadRouteAndPlot(routeId: String, startNav: Boolean = false) {
+        dbExecutor.execute {
+            val route = AppDatabase.getDatabase(this).routeDao().getRouteById(routeId)
+            if (route != null) {
+                val waypointDao = AppDatabase.getDatabase(this).waypointDao()
+                val wpIds = route.getWaypointIdList()
+                val tempWaypoints = mutableListOf<WaypointEntity>()
+                for (id in wpIds) {
+                    val wp = waypointDao.getWaypointById(id)
+                    if (wp != null) {
+                        tempWaypoints.add(wp)
+                    }
+                }
+
+                runOnUiThread {
+                    activeRoute = route
+                    routeWaypoints.clear()
+                    routeWaypoints.addAll(tempWaypoints)
+                    
+                    if (routeWaypoints.isNotEmpty()) {
+                        val bounds = com.mapbox.mapboxsdk.geometry.LatLngBounds.Builder()
+                        for (wp in routeWaypoints) {
+                            bounds.include(com.mapbox.mapboxsdk.geometry.LatLng(wp.latitude, wp.longitude))
+                        }
+                        try {
+                            mapboxMap?.animateCamera(
+                                com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngBounds(bounds.build(), 150),
+                                800
+                            )
+                        } catch (e: Exception) {
+                            mapboxMap?.animateCamera(
+                                com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLng(
+                                    com.mapbox.mapboxsdk.geometry.LatLng(routeWaypoints[0].latitude, routeWaypoints[0].longitude)
+                                ),
+                                800
+                            )
+                        }
+                    }
+
+                    drawRouteOnMap()
+
+                    if (startNav && routeWaypoints.size >= 2) {
+                        AlertDialog.Builder(this@MapActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle("🗺️ 路线已载入")
+                            .setMessage("检测到路线「${route.name}」，是否现在开启路线导航？")
+                            .setPositiveButton("开启导航") { _, _ ->
+                                startRouteNavigation()
+                            }
+                            .setNegativeButton("仅在地图查看", null)
+                            .show()
+                    } else if (startNav) {
+                        Toast.makeText(this@MapActivity, "该路线航点不足，无法启动导航", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startRouteNavigation() {
+        if (routeWaypoints.size < 2) return
+        isRouteNavigationActive = true
+        routeCurrentTargetIndex = 0
+        resetArrivalAlertFlags()
+        panelNavigation.visibility = View.VISIBLE
+        
+        val firstWp = routeWaypoints[0]
+        Toast.makeText(this, "路线导航已开启，首个目标航点: ${firstWp.name}", Toast.LENGTH_LONG).show()
+
+        val lastLoc = getLastKnownLocation()
+        updateNavigationHud(lastLoc)
+    }
+
+    private fun checkRouteWaypointArrival(distanceMeters: Float, targetWp: WaypointEntity) {
+        if (!isRouteNavigationActive) return
+
+        if (distanceMeters <= 10f) {
+            triggerArrivalAlert("已到达航点: ${targetWp.name}")
+            moveToNextRouteWaypoint()
+        } else if (distanceMeters <= 50f && !alerted50m) {
+            alerted50m = true
+            triggerArrivalAlert("距离航点 ${targetWp.name} 仅 50米")
+        } else if (distanceMeters <= 100f && !alerted100m) {
+            alerted100m = true
+            triggerArrivalAlert("距离航点 ${targetWp.name} 仅 100米")
+        }
+    }
+
+    private fun triggerArrivalAlert(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        
+        try {
+            val v = getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                v?.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                v?.vibrate(500)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            val notification = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+            val r = android.media.RingtoneManager.getRingtone(applicationContext, notification)
+            r.play()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun moveToNextRouteWaypoint() {
+        routeCurrentTargetIndex++
+        if (routeCurrentTargetIndex >= routeWaypoints.size) {
+            isRouteNavigationActive = false
+            runOnUiThread {
+                panelNavigation.visibility = View.GONE
+                AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("🏁 路线已完成！")
+                    .setMessage("恭喜您，已成功到达路线的终点航点！")
+                    .setPositiveButton("确定", null)
+                    .show()
+            }
+        } else {
+            resetArrivalAlertFlags()
+            runOnUiThread {
+                val nextWp = routeWaypoints[routeCurrentTargetIndex]
+                Toast.makeText(this, "正在导向下一个航点: ${nextWp.name}", Toast.LENGTH_SHORT).show()
+                val lastLoc = getLastKnownLocation()
+                updateNavigationHud(lastLoc)
+            }
+        }
+    }
+
+    private fun resetArrivalAlertFlags() {
+        alerted100m = false
+        alerted50m = false
+    }
+
+    private fun getArrowForBearing(bearing: Float): String {
+        return when {
+            bearing >= 337.5 || bearing < 22.5 -> "⬆"
+            bearing >= 22.5 && bearing < 67.5 -> "↗"
+            bearing >= 67.5 && bearing < 112.5 -> "➔"
+            bearing >= 112.5 && bearing < 157.5 -> "↘"
+            bearing >= 157.5 && bearing < 202.5 -> "⬇"
+            bearing >= 202.5 && bearing < 247.5 -> "↙"
+            bearing >= 247.5 && bearing < 292.5 -> "⬅"
+            bearing >= 292.5 && bearing < 337.5 -> "↖"
+            else -> "⬆"
+        }
     }
 
     private fun getLastKnownLocation(): Location? {
@@ -3830,7 +4072,20 @@ ${finalStyleJsonString ?: "None"}
     }
 
     private fun updateNavigationHud(currentLocation: Location?) {
-        val target = navigationTargetWaypoint ?: return
+        val target = if (isRouteNavigationActive) {
+            if (routeCurrentTargetIndex < routeWaypoints.size) {
+                routeWaypoints[routeCurrentTargetIndex]
+            } else {
+                null
+            }
+        } else {
+            navigationTargetWaypoint
+        }
+
+        if (target == null) {
+            return
+        }
+
         if (currentLocation == null) {
             tvNavDistance.text = "-- m"
             tvNavBearing.text = "--°"
@@ -3857,18 +4112,29 @@ ${finalStyleJsonString ?: "None"}
         }
 
         val directionStr = getDirectionString(bearing)
+        val arrowStr = getArrowForBearing(bearing)
 
         val walkingSpeedKmh = 4.0
         val timeHours = distanceKm / walkingSpeedKmh
         val timeMinutes = (timeHours * 60).toInt().coerceAtLeast(1)
 
-        tvNavTitle.text = "🧭 正在导航至: ${target.name}"
+        if (isRouteNavigationActive) {
+            val routeName = activeRoute?.name ?: "路线"
+            val remainingWps = routeWaypoints.size - routeCurrentTargetIndex
+            tvNavTitle.text = "🧭 $routeName (剩 $remainingWps点) ➔ ${target.name}"
+            
+            // Trigger arrival warning checks on background/foreground thread
+            checkRouteWaypointArrival(distanceMeters, target)
+        } else {
+            tvNavTitle.text = "🧭 正在导航至: ${target.name}"
+        }
+
         tvNavDistance.text = if (distanceKm < 1.0) {
             String.format(java.util.Locale.US, "%.0f m", distanceMeters)
         } else {
             String.format(java.util.Locale.US, "%.2f km", distanceKm)
         }
-        tvNavBearing.text = String.format(java.util.Locale.US, "%.0f° %s", bearing, directionStr)
+        tvNavBearing.text = String.format(java.util.Locale.US, "%s %.0f° %s", arrowStr, bearing, directionStr)
         tvNavTime.text = "$timeMinutes 分钟"
     }
 

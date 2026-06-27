@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingLeft="4dp"
+    android:paddingRight="4dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:background="#22FFFFFF"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp">
+
+        <TextView
+            android:id="@+id/tv_chip_emoji"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📍"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_chip_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="航点A"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginLeft="4dp"
+            android:layout_marginRight="6dp"
+            android:singleLine="true" />
+
+        <TextView
+            android:id="@+id/btn_remove_chip"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:text="✕"
+            android:textColor="@color/cyber_light_gray"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_chip_arrow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=" ➔ "
+        android:textColor="@color/cyber_light_gray"
+        android:textSize="12sp"
+        android:layout_marginLeft="4dp"
+        android:layout_marginRight="4dp" />
+</LinearLayout>

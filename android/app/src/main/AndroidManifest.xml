@@ -54,6 +54,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".RouteManagerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".RouteCreateActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".TrackDetailActivity"
             android:exported="false" />
 

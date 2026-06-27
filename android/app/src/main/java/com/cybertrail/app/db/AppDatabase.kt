@@ -7,10 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Track::class, TrackPoint::class, PhotoAnchor::class, WaypointEntity::class], version = 5, exportSchema = false)
+@Database(entities = [Track::class, TrackPoint::class, PhotoAnchor::class, WaypointEntity::class, RouteEntity::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao
     abstract fun waypointDao(): WaypointDao
+    abstract fun routeDao(): RouteDao
 
     companion object {
         @Volatile
@@ -42,6 +43,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `routes` (
+                        `id` TEXT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `description` TEXT, 
+                        `createTime` INTEGER NOT NULL, 
+                        `favorite` INTEGER NOT NULL DEFAULT 0, 
+                        `distanceMeters` REAL NOT NULL, 
+                        `estimatedTimeMinutes` INTEGER NOT NULL, 
+                        `waypointIds` TEXT NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -49,7 +68,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "cybertrail_database"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
