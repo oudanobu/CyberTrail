@@ -546,6 +546,131 @@
             android:clickable="true"
             android:focusable="true"/>
 
+        <!-- Navigation HUD Panel -->
+        <LinearLayout
+            android:id="@+id/panel_navigation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_marginLeft="16dp"
+            android:layout_marginRight="16dp"
+            android:layout_marginTop="100dp"
+            android:background="#E60F172A"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:elevation="12dp"
+            android:visibility="gone"
+            android:clickable="true"
+            android:focusable="true">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:id="@+id/tv_nav_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🧭 正在导航至: 未命名"
+                    android:textColor="@color/cyber_green"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_alignParentLeft="true"/>
+
+                <TextView
+                    android:id="@+id/btn_nav_cancel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="❌ 结束"
+                    android:textColor="#EF4444"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_alignParentRight="true"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"/>
+            </RelativeLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="直线距离"
+                        android:textColor="@color/cyber_light_gray"
+                        android:textSize="10sp"/>
+
+                    <TextView
+                        android:id="@+id/tv_nav_distance"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0.00 km"
+                        android:textColor="@color/white"
+                        android:textSize="14sp"
+                        android:textStyle="bold"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="方位角"
+                        android:textColor="@color/cyber_light_gray"
+                        android:textSize="10sp"/>
+
+                    <TextView
+                        android:id="@+id/tv_nav_bearing"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--°"
+                        android:textColor="@color/white"
+                        android:textSize="14sp"
+                        android:textStyle="bold"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="预计用时"
+                        android:textColor="@color/cyber_light_gray"
+                        android:textSize="10sp"/>
+
+                    <TextView
+                        android:id="@+id/tv_nav_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 分钟"
+                        android:textColor="@color/white"
+                        android:textSize="14sp"
+                        android:textStyle="bold"/>
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
     </RelativeLayout>
 
     <!-- Side Menu / Drawer (sliding from start/left) -->
@@ -785,6 +910,22 @@
                     android:padding="10dp"
                     android:layout_marginBottom="10dp"
                     android:text="📂 轨迹管理"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <!-- Waypoint Manager Entry Button -->
+                <TextView
+                    android:id="@+id/btn_open_waypoint_manager"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#22F59E0B"
+                    android:textColor="#F59E0B"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:text="📍 航点管理"
                     android:clickable="true"
                     android:focusable="true"/>
 

@@ -50,6 +50,8 @@ import com.cybertrail.app.db.Track
 import com.cybertrail.app.db.TrackPoint
 import com.cybertrail.app.db.TrackDao
 import com.cybertrail.app.db.PhotoAnchor
+import com.cybertrail.app.db.WaypointEntity
+import com.cybertrail.app.db.WaypointDao
 import java.util.concurrent.Executors
 import android.os.Handler
 import android.os.Looper
@@ -142,6 +144,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
     // Track Recording System Properties
     private lateinit var trackDao: TrackDao
+    private lateinit var waypointDao: WaypointDao
+    private var navigationTargetWaypoint: WaypointEntity? = null
+    private lateinit var panelNavigation: View
+    private lateinit var tvNavTitle: TextView
+    private lateinit var tvNavDistance: TextView
+    private lateinit var tvNavBearing: TextView
+    private lateinit var tvNavTime: TextView
+    private lateinit var btnNavCancel: View
+
     private val dbExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentTrackId: Long = 0L
@@ -615,6 +626,7 @@ ${finalStyleJsonString ?: "None"}
 
         initTrackRecording()
         initTrackReplay()
+        initWaypoints()
         runOfflineDiagnostics()
         startGpsTracking()
     }
@@ -696,6 +708,19 @@ ${finalStyleJsonString ?: "None"}
                     runOnUiThread {
                         showPhotoAnchorDialog(matchingAnchor)
                     }
+                    return@execute
+                }
+
+                val waypoints = waypointDao.getAllWaypoints()
+                val matchingWaypoint = waypoints.find {
+                    Math.abs(it.latitude - marker.position.latitude) < 0.0001 &&
+                    Math.abs(it.longitude - marker.position.longitude) < 0.0001
+                }
+                if (matchingWaypoint != null) {
+                    runOnUiThread {
+                        showWaypointDetailDialog(matchingWaypoint)
+                    }
+                    return@execute
                 }
             }
             true
@@ -706,11 +731,17 @@ ${finalStyleJsonString ?: "None"}
             false
         }
 
+        map.addOnMapLongClickListener { latLng ->
+            showCreateWaypointDialog(latLng)
+            true
+        }
+
         map.addOnCameraIdleListener {
             Log.d("CYBERTRAIL_MAP", "Map idle")
         }
 
         drawPhotoAnchorsOnMap()
+        drawWaypointsOnMap()
 
         val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
         val mapsDirUpper = java.io.File(baseDir, "Maps")
@@ -1216,6 +1247,7 @@ ${finalStyleJsonString ?: "None"}
         updateLocationPanel(location)
         updateTerrainHud(lat, lon)
         updateDiagnosticHud()
+        updateNavigationHud(location)
 
         // Record Track Point
         recordLocationPoint(location)
@@ -1411,6 +1443,29 @@ ${finalStyleJsonString ?: "None"}
             registerReceiver(trackServiceReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             registerReceiver(trackServiceReceiver, filter)
+        }
+        handleCenteringIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleCenteringIntent(intent)
+    }
+
+    private fun handleCenteringIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.hasExtra("center_latitude") && intent.hasExtra("center_longitude")) {
+            val lat = intent.getDoubleExtra("center_latitude", 0.0)
+            val lon = intent.getDoubleExtra("center_longitude", 0.0)
+            mapboxMap?.animateCamera(
+                com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLng(
+                    com.mapbox.mapboxsdk.geometry.LatLng(lat, lon)
+                ),
+                800
+            )
+            intent.removeExtra("center_latitude")
+            intent.removeExtra("center_longitude")
         }
     }
 
@@ -2594,6 +2649,7 @@ ${finalStyleJsonString ?: "None"}
 
         cbLayerWaypoint.setOnCheckedChangeListener { _, isChecked ->
             isWaypointLayerEnabled = isChecked
+            drawWaypointsOnMap()
         }
 
         cbLayerPhoto.setOnCheckedChangeListener { _, isChecked ->
@@ -3386,6 +3442,447 @@ ${finalStyleJsonString ?: "None"}
             } catch (e: Exception) {
                 Log.e(TAG, "Error drawing photo anchors on map", e)
             }
+        }
+    }
+
+    private fun initWaypoints() {
+        waypointDao = AppDatabase.getDatabase(this).waypointDao()
+
+        panelNavigation = findViewById(R.id.panel_navigation)
+        tvNavTitle = findViewById(R.id.tv_nav_title)
+        tvNavDistance = findViewById(R.id.tv_nav_distance)
+        tvNavBearing = findViewById(R.id.tv_nav_bearing)
+        tvNavTime = findViewById(R.id.tv_nav_time)
+        btnNavCancel = findViewById(R.id.btn_nav_cancel)
+
+        btnNavCancel.setOnClickListener {
+            stopNavigation()
+        }
+
+        val btnOpenWaypointManager: View = findViewById(R.id.btn_open_waypoint_manager)
+        btnOpenWaypointManager.setOnClickListener {
+            val intent = Intent(this, WaypointManagerActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun getEmojiForIconType(iconType: String): String {
+        return when (iconType) {
+            "NORMAL" -> "📍"
+            "CAMP" -> "⛺"
+            "WATER" -> "🚰"
+            "SUMMIT" -> "🏔"
+            "DANGER" -> "⚠"
+            "PHOTO" -> "📷"
+            "PARKING" -> "🚗"
+            else -> "📍"
+        }
+    }
+
+    private fun createWaypointIconBitmap(iconType: String): com.mapbox.mapboxsdk.annotations.Icon {
+        val density = resources.displayMetrics.density
+        val size = (32 * density).toInt()
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+        }
+
+        // Outer Cyber Green circle ring
+        paint.color = 0xFFF59E0B.toInt() // Amber for Waypoints
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+
+        // Inner Slate circle
+        paint.color = 0xFF0F172A.toInt()
+        canvas.drawCircle(size / 2f, size / 2f, (size / 2f) - (2 * density), paint)
+
+        // Center emoji
+        paint.color = android.graphics.Color.WHITE
+        paint.textSize = 14 * density
+        paint.textAlign = android.graphics.Paint.Align.CENTER
+        
+        val fontMetrics = paint.fontMetrics
+        val y = (size / 2f) - (fontMetrics.ascent + fontMetrics.descent) / 2f
+        canvas.drawText(getEmojiForIconType(iconType), size / 2f, y, paint)
+
+        val iconFactory = com.mapbox.mapboxsdk.annotations.IconFactory.getInstance(this)
+        return iconFactory.fromBitmap(bitmap)
+    }
+
+    private val waypointMarkers = mutableListOf<com.mapbox.mapboxsdk.annotations.Marker>()
+
+    private fun drawWaypointsOnMap() {
+        val map = mapboxMap ?: return
+        runOnUiThread {
+            try {
+                for (marker in waypointMarkers) {
+                    map.removeMarker(marker)
+                }
+                waypointMarkers.clear()
+
+                if (!isWaypointLayerEnabled) {
+                    return@runOnUiThread
+                }
+
+                dbExecutor.execute {
+                    val waypoints = waypointDao.getAllWaypoints()
+                    runOnUiThread {
+                        for (wp in waypoints) {
+                            val markerIcon = createWaypointIconBitmap(wp.iconType)
+                            val markerOptions = com.mapbox.mapboxsdk.annotations.MarkerOptions()
+                                .position(com.mapbox.mapboxsdk.geometry.LatLng(wp.latitude, wp.longitude))
+                                .icon(markerIcon)
+                                .title(wp.name)
+                                .snippet(wp.description ?: "点击查看详情")
+                            val marker = map.addMarker(markerOptions)
+                            waypointMarkers.add(marker)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error drawing waypoints on map", e)
+            }
+        }
+    }
+
+    private fun showCreateWaypointDialog(latLng: com.mapbox.mapboxsdk.geometry.LatLng) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_create_waypoint, null)
+        val tvCoords: TextView = dialogView.findViewById(R.id.tv_waypoint_coords)
+        val etName: EditText = dialogView.findViewById(R.id.et_waypoint_name)
+        val etDesc: EditText = dialogView.findViewById(R.id.et_waypoint_desc)
+        val spIcon: android.widget.Spinner = dialogView.findViewById(R.id.sp_waypoint_icon)
+
+        // Get elevation from demSystem
+        val elevation = demSystem.getElevation(latLng.latitude, latLng.longitude)
+        tvCoords.text = String.format(
+            java.util.Locale.US,
+            "纬度: %.6f | 经度: %.6f\n估算海拔: %.1f m",
+            latLng.latitude,
+            latLng.longitude,
+            elevation
+        )
+
+        // Setup spinner items
+        val spinnerItems = listOf(
+            "📍 默认 (NORMAL)",
+            "⛺ 营地 (CAMP)",
+            "🚰 水源 (WATER)",
+            "🏔 山峰 (SUMMIT)",
+            "⚠ 危险 (DANGER)",
+            "📷 照片 (PHOTO)",
+            "🚗 车位 (PARKING)"
+        )
+        val iconTypes = listOf("NORMAL", "CAMP", "WATER", "SUMMIT", "DANGER", "PHOTO", "PARKING")
+
+        val adapter = android.widget.ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            spinnerItems
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spIcon.adapter = adapter
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setView(dialogView)
+            .setPositiveButton("保存") { dialog, _ ->
+                val name = etName.text.toString().trim().ifEmpty { "未命名航点" }
+                val desc = etDesc.text.toString().trim().ifEmpty { null }
+                val iconType = iconTypes[spIcon.selectedItemPosition]
+                val now = System.currentTimeMillis()
+                val id = java.util.UUID.randomUUID().toString()
+
+                val waypoint = com.cybertrail.app.db.WaypointEntity(
+                    id = id,
+                    name = name,
+                    latitude = latLng.latitude,
+                    longitude = latLng.longitude,
+                    elevation = elevation,
+                    description = desc,
+                    iconType = iconType,
+                    favorite = false,
+                    createTime = now
+                )
+
+                dbExecutor.execute {
+                    waypointDao.insertWaypoint(waypoint)
+                    runOnUiThread {
+                        Toast.makeText(this@MapActivity, "航点保存成功！", Toast.LENGTH_SHORT).show()
+                        drawWaypointsOnMap()
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .show()
+    }
+
+    private fun showWaypointDetailDialog(waypoint: com.cybertrail.app.db.WaypointEntity) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_waypoint_detail, null)
+        val tvEmoji: TextView = dialogView.findViewById(R.id.tv_detail_icon_emoji)
+        val tvName: TextView = dialogView.findViewById(R.id.tv_detail_name)
+        val tvDesc: TextView = dialogView.findViewById(R.id.tv_detail_desc)
+        val tvCoords: TextView = dialogView.findViewById(R.id.tv_detail_coords)
+        val tvEle: TextView = dialogView.findViewById(R.id.tv_detail_ele)
+        val tvTime: TextView = dialogView.findViewById(R.id.tv_detail_time)
+        val btnFav: TextView = dialogView.findViewById(R.id.btn_detail_favorite)
+
+        val btnNavigate: TextView = dialogView.findViewById(R.id.btn_detail_navigate)
+        val btnEdit: TextView = dialogView.findViewById(R.id.btn_detail_edit)
+        val btnDelete: TextView = dialogView.findViewById(R.id.btn_detail_delete)
+        val btnClose: TextView = dialogView.findViewById(R.id.btn_detail_close)
+
+        // Bind data
+        tvEmoji.text = getEmojiForIconType(waypoint.iconType)
+        tvName.text = waypoint.name
+        tvDesc.text = waypoint.description ?: "无备注信息"
+        tvCoords.text = String.format(java.util.Locale.US, "%.6f, %.6f", waypoint.latitude, waypoint.longitude)
+        tvEle.text = waypoint.elevation?.let { String.format(java.util.Locale.US, "%.1f m", it) } ?: "-- m"
+        
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        tvTime.text = sdf.format(java.util.Date(waypoint.createTime))
+
+        // Favorite state update UI helper
+        fun updateFavoriteButtonState(isFav: Boolean) {
+            btnFav.text = if (isFav) "★" else "☆"
+        }
+        updateFavoriteButtonState(waypoint.favorite)
+
+        var dialog: AlertDialog? = null
+
+        btnFav.setOnClickListener {
+            waypoint.favorite = !waypoint.favorite
+            updateFavoriteButtonState(waypoint.favorite)
+            dbExecutor.execute {
+                waypointDao.updateWaypoint(waypoint)
+                runOnUiThread {
+                    Toast.makeText(this@MapActivity, if (waypoint.favorite) "已加入收藏" else "已取消收藏", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        btnNavigate.setOnClickListener {
+            startNavigation(waypoint)
+            dialog?.dismiss()
+        }
+
+        btnEdit.setOnClickListener {
+            dialog?.dismiss()
+            showEditWaypointDialog(waypoint)
+        }
+
+        btnDelete.setOnClickListener {
+            AlertDialog.Builder(this@MapActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("确认删除")
+                .setMessage("确定要删除此航点吗？")
+                .setPositiveButton("删除") { _, _ ->
+                    dbExecutor.execute {
+                        waypointDao.deleteWaypointById(waypoint.id)
+                        runOnUiThread {
+                            Toast.makeText(this@MapActivity, "航点已删除", Toast.LENGTH_SHORT).show()
+                            if (navigationTargetWaypoint?.id == waypoint.id) {
+                                stopNavigation()
+                            }
+                            drawWaypointsOnMap()
+                        }
+                    }
+                    dialog?.dismiss()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
+        btnClose.setOnClickListener {
+            dialog?.dismiss()
+        }
+
+        dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setView(dialogView)
+            .create()
+        dialog.show()
+    }
+
+    private fun showEditWaypointDialog(waypoint: com.cybertrail.app.db.WaypointEntity) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_create_waypoint, null)
+        val tvTitle: TextView = dialogView.findViewById(R.id.tv_waypoint_coords)
+        val etName: EditText = dialogView.findViewById(R.id.et_waypoint_name)
+        val etDesc: EditText = dialogView.findViewById(R.id.et_waypoint_desc)
+        val spIcon: android.widget.Spinner = dialogView.findViewById(R.id.sp_waypoint_icon)
+
+        // Setup title
+        (dialogView.getChildAt(0) as? TextView)?.text = "✏ 编辑航点"
+        tvTitle.text = String.format(
+            java.util.Locale.US,
+            "纬度: %.6f | 经度: %.6f\n估算海拔: %.1f m",
+            waypoint.latitude,
+            waypoint.longitude,
+            waypoint.elevation ?: 0.0
+        )
+
+        etName.setText(waypoint.name)
+        etDesc.setText(waypoint.description ?: "")
+
+        val spinnerItems = listOf(
+            "📍 默认 (NORMAL)",
+            "⛺ 营地 (CAMP)",
+            "🚰 水源 (WATER)",
+            "🏔 山峰 (SUMMIT)",
+            "⚠ 危险 (DANGER)",
+            "📷 照片 (PHOTO)",
+            "🚗 车位 (PARKING)"
+        )
+        val iconTypes = listOf("NORMAL", "CAMP", "WATER", "SUMMIT", "DANGER", "PHOTO", "PARKING")
+
+        val adapter = android.widget.ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            spinnerItems
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spIcon.adapter = adapter
+
+        val idx = iconTypes.indexOf(waypoint.iconType).coerceAtLeast(0)
+        spIcon.setSelection(idx)
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setView(dialogView)
+            .setPositiveButton("保存") { dialog, _ ->
+                val name = etName.text.toString().trim().ifEmpty { "未命名航点" }
+                val desc = etDesc.text.toString().trim().ifEmpty { null }
+                val iconType = iconTypes[spIcon.selectedItemPosition]
+
+                val updatedWaypoint = waypoint.copy(
+                    name = name,
+                    description = desc,
+                    iconType = iconType
+                )
+
+                dbExecutor.execute {
+                    waypointDao.updateWaypoint(updatedWaypoint)
+                    runOnUiThread {
+                        Toast.makeText(this@MapActivity, "航点已更新！", Toast.LENGTH_SHORT).show()
+                        drawWaypointsOnMap()
+                        if (navigationTargetWaypoint?.id == updatedWaypoint.id) {
+                            navigationTargetWaypoint = updatedWaypoint
+                            val lastLoc = getLastKnownLocation()
+                            updateNavigationHud(lastLoc)
+                        }
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .show()
+    }
+
+    private fun startNavigation(waypoint: com.cybertrail.app.db.WaypointEntity) {
+        navigationTargetWaypoint = waypoint
+        panelNavigation.visibility = View.VISIBLE
+        val lastLoc = getLastKnownLocation()
+        updateNavigationHud(lastLoc)
+        
+        mapboxMap?.let { map ->
+            val bounds = com.mapbox.mapboxsdk.geometry.LatLngBounds.Builder()
+            lastLoc?.let {
+                bounds.include(com.mapbox.mapboxsdk.geometry.LatLng(it.latitude, it.longitude))
+            }
+            bounds.include(com.mapbox.mapboxsdk.geometry.LatLng(waypoint.latitude, waypoint.longitude))
+            
+            try {
+                map.animateCamera(
+                    com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLngBounds(bounds.build(), 150),
+                    800
+                )
+            } catch (e: Exception) {
+                map.animateCamera(
+                    com.mapbox.mapboxsdk.camera.CameraUpdateFactory.newLatLng(
+                        com.mapbox.mapboxsdk.geometry.LatLng(waypoint.latitude, waypoint.longitude)
+                    ),
+                    400
+                )
+            }
+        }
+        Toast.makeText(this, "开始导航至: ${waypoint.name}", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopNavigation() {
+        navigationTargetWaypoint = null
+        panelNavigation.visibility = View.GONE
+        Toast.makeText(this, "导航已结束", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun getLastKnownLocation(): Location? {
+        val lastLat = lastGpsLatitude
+        val lastLon = lastGpsLongitude
+        if (lastLat != null && lastLon != null) {
+            return Location("").apply {
+                latitude = lastLat
+                longitude = lastLon
+            }
+        }
+        return null
+    }
+
+    private fun updateNavigationHud(currentLocation: Location?) {
+        val target = navigationTargetWaypoint ?: return
+        if (currentLocation == null) {
+            tvNavDistance.text = "-- m"
+            tvNavBearing.text = "--°"
+            tvNavTime.text = "-- 分钟"
+            return
+        }
+
+        val results = FloatArray(1)
+        Location.distanceBetween(
+            currentLocation.latitude, currentLocation.longitude,
+            target.latitude, target.longitude,
+            results
+        )
+        val distanceMeters = results[0]
+        val distanceKm = distanceMeters / 1000.0
+
+        val targetLoc = Location("").apply {
+            latitude = target.latitude
+            longitude = target.longitude
+        }
+        var bearing = currentLocation.bearingTo(targetLoc)
+        if (bearing < 0) {
+            bearing += 360f
+        }
+
+        val directionStr = getDirectionString(bearing)
+
+        val walkingSpeedKmh = 4.0
+        val timeHours = distanceKm / walkingSpeedKmh
+        val timeMinutes = (timeHours * 60).toInt().coerceAtLeast(1)
+
+        tvNavTitle.text = "🧭 正在导航至: ${target.name}"
+        tvNavDistance.text = if (distanceKm < 1.0) {
+            String.format(java.util.Locale.US, "%.0f m", distanceMeters)
+        } else {
+            String.format(java.util.Locale.US, "%.2f km", distanceKm)
+        }
+        tvNavBearing.text = String.format(java.util.Locale.US, "%.0f° %s", bearing, directionStr)
+        tvNavTime.text = "$timeMinutes 分钟"
+    }
+
+    private fun getDirectionString(bearing: Float): String {
+        return when {
+            bearing >= 337.5 || bearing < 22.5 -> "北"
+            bearing >= 22.5 && bearing < 67.5 -> "东北"
+            bearing >= 67.5 && bearing < 112.5 -> "东"
+            bearing >= 112.5 && bearing < 157.5 -> "东南"
+            bearing >= 157.5 && bearing < 202.5 -> "南"
+            bearing >= 202.5 && bearing < 247.5 -> "西南"
+            bearing >= 247.5 && bearing < 292.5 -> "西"
+            bearing >= 292.5 && bearing < 337.5 -> "西北"
+            else -> ""
         }
     }
 

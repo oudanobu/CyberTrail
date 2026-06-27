@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/cyber_slate"
+    android:padding="20dp">
+
+    <!-- Header Row with Favorite Star -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:id="@+id/tv_detail_icon_emoji"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📍"
+            android:textSize="24sp"
+            android:layout_alignParentLeft="true"
+            android:layout_centerVertical="true" />
+
+        <TextView
+            android:id="@+id/tv_detail_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toRightOf="@id/tv_detail_icon_emoji"
+            android:layout_toLeftOf="@+id/btn_detail_favorite"
+            android:textColor="@color/white"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginLeft="10dp"
+            android:layout_centerVertical="true"
+            android:singleLine="true" />
+
+        <TextView
+            android:id="@+id/btn_detail_favorite"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_alignParentRight="true"
+            android:gravity="center"
+            android:text="☆"
+            android:textColor="@color/cyber_amber"
+            android:textSize="28sp"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_centerVertical="true" />
+    </RelativeLayout>
+
+    <!-- Description (Remark) -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="备注信息"
+        android:textColor="@color/cyber_green"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_detail_desc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="无备注信息"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Coords / Elevation Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="地理坐标"
+                android:textColor="@color/cyber_light_gray"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tv_detail_coords"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0.000000, 0.000000"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginLeft="10dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="海拔高度"
+                android:textColor="@color/cyber_light_gray"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tv_detail_ele"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0.0 m"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Create Time -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="创建时间"
+        android:textColor="@color/cyber_light_gray"
+        android:textSize="11sp"
+        android:layout_marginBottom="2dp" />
+
+    <TextView
+        android:id="@+id/tv_detail_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="--:--"
+        android:textColor="@color/white"
+        android:textSize="13sp"
+        android:layout_marginBottom="20dp" />
+
+    <!-- Action Buttons Grid -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/btn_detail_navigate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="#2210B981"
+            android:textColor="@color/cyber_green"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="🧭 直线导航"
+            android:layout_marginRight="4dp"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <TextView
+            android:id="@+id/btn_detail_edit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="#22F59E0B"
+            android:textColor="@color/cyber_amber"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="✏ 编辑"
+            android:layout_marginLeft="4dp"
+            android:layout_marginRight="4dp"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <TextView
+            android:id="@+id/btn_detail_delete"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="#22EF4444"
+            android:textColor="#EF4444"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="🗑 删除"
+            android:layout_marginLeft="4dp"
+            android:clickable="true"
+            android:focusable="true"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btn_detail_close"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#11FFFFFF"
+        android:textColor="@color/cyber_light_gray"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="❌ 关闭"
+        android:clickable="true"
+        android:focusable="true"/>
+
+</LinearLayout>

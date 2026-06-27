@@ -50,6 +50,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".WaypointManagerActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".TrackDetailActivity"
             android:exported="false" />
 

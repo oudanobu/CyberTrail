@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/cyber_slate"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📍 新增航点"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Lat/Lon Info -->
+    <TextView
+        android:id="@+id/tv_waypoint_coords"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/cyber_light_gray"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Name Label -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="航点名称"
+        android:textColor="@color/cyber_green"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp" />
+
+    <EditText
+        android:id="@+id/et_waypoint_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/cyber_edittext_bg"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:padding="10dp"
+        android:hint="请输入航点名称"
+        android:textColorHint="#55FFFFFF"
+        android:layout_marginBottom="16dp"
+        android:singleLine="true" />
+
+    <!-- Description Label -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="备注说明"
+        android:textColor="@color/cyber_green"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp" />
+
+    <EditText
+        android:id="@+id/et_waypoint_desc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/cyber_edittext_bg"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:padding="10dp"
+        android:hint="请输入备注说明（选填）"
+        android:textColorHint="#55FFFFFF"
+        android:layout_marginBottom="16dp"
+        android:minLines="2" />
+
+    <!-- Icon Type Label -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="航点图标"
+        android:textColor="@color/cyber_green"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp" />
+
+    <!-- A clean Spinner to select icon types -->
+    <Spinner
+        android:id="@+id/sp_waypoint_icon"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="@drawable/cyber_edittext_bg"
+        android:textColor="@color/white"
+        android:popupBackground="@color/cyber_dark_gray"
+        android:layout_marginBottom="8dp" />
+
+</LinearLayout>
