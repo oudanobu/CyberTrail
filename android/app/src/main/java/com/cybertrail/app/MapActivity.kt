@@ -4121,7 +4121,7 @@ ${finalStyleJsonString ?: "None"}
         if (isRouteNavigationActive) {
             val routeName = activeRoute?.name ?: "路线"
             val remainingWps = routeWaypoints.size - routeCurrentTargetIndex
-            tvNavTitle.text = "🧭 $routeName (剩 $remainingWps点) ➔ ${target.name}"
+            tvNavTitle.text = "🧭 $routeName (剩余航点：$remainingWps) ➔ ${target.name}"
             
             // Trigger arrival warning checks on background/foreground thread
             checkRouteWaypointArrival(distanceMeters, target)

@@ -894,6 +894,17 @@
                         android:textColor="@color/cyber_green"
                         android:textSize="11sp"
                         android:checked="true"
+                        android:layout_marginEnd="10dp"
+                        android:buttonTint="@color/cyber_green" />
+
+                    <CheckBox
+                        android:id="@+id/cb_layer_route"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="路线"
+                        android:textColor="@color/cyber_green"
+                        android:textSize="11sp"
+                        android:checked="true"
                         android:buttonTint="@color/cyber_green" />
                 </LinearLayout>
 
@@ -926,6 +937,22 @@
                     android:padding="10dp"
                     android:layout_marginBottom="10dp"
                     android:text="📍 航点管理"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <!-- Route Manager Entry Button -->
+                <TextView
+                    android:id="@+id/btn_open_route_manager"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#228B5CF6"
+                    android:textColor="#8B5CF6"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:text="🛣️ 路线管理"
                     android:clickable="true"
                     android:focusable="true"/>
 
