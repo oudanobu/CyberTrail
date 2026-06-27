@@ -223,7 +223,7 @@ class WaypointManagerActivity : AppCompatActivity() {
         val spIcon: android.widget.Spinner = dialogView.findViewById(R.id.sp_waypoint_icon)
 
         // Setup title
-        (dialogView.getChildAt(0) as? TextView)?.text = "✏ 编辑航点"
+        ((dialogView as? ViewGroup)?.getChildAt(0) as? TextView)?.text = "✏ 编辑航点"
         tvTitle.text = String.format(
             Locale.US,
             "纬度: %.6f | 经度: %.6f\n估算海拔: %.1f m",
