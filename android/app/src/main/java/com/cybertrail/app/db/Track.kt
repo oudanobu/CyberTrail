@@ -9,5 +9,6 @@ data class Track(
     val startTime: Long,
     var endTime: Long? = null,
     var status: String = "RECORDING", // "RECORDING", "PAUSED", "STOPPED"
-    var name: String? = null
+    var name: String? = null,
+    var favorite: Boolean = false
 )

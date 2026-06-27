@@ -54,6 +54,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".StatisticsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".offline.OfflineMapActivity"
             android:exported="false" />
 

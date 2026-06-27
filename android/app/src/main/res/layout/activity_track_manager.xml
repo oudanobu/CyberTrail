@@ -37,16 +37,135 @@
             android:textStyle="bold"
             android:layout_marginLeft="8dp" />
 
-        <TextView
-            android:id="@+id/tv_track_count_summary"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:layout_alignParentRight="true"
-            android:gravity="center_vertical"
-            android:text="共 0 条"
-            android:textColor="@color/cyber_light_gray"
-            android:textSize="14sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/btn_statistics"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="📊 统计中心"
+                android:textColor="@color/cyber_green"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingLeft="8dp"
+                android:paddingRight="12dp"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/tv_track_count_summary"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="共 0 条"
+                android:textColor="@color/cyber_light_gray"
+                android:textSize="13sp" />
+        </LinearLayout>
     </RelativeLayout>
+
+    <!-- Search and Sort Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/cyber_dark_gray"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="12dp">
+
+        <!-- Search box -->
+        <EditText
+            android:id="@+id/et_search_track"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="#1AFFFFFF"
+            android:hint="🔍 搜索轨迹名称..."
+            android:textColorHint="@color/cyber_light_gray"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:maxLines="1"
+            android:inputType="text"
+            android:layout_marginBottom="10dp"/>
+
+        <!-- Sorting selector buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="排序:"
+                android:textColor="@color/cyber_light_gray"
+                android:textSize="12sp"
+                android:layout_marginRight="8dp"/>
+
+            <TextView
+                android:id="@+id/btn_sort_time"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="时间 🕒"
+                android:textColor="#22D3EE"
+                android:background="#2222D3EE"
+                android:textSize="11sp"
+                android:layout_marginRight="4dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btn_sort_distance"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="距离 📐"
+                android:textColor="@color/white"
+                android:background="#11FFFFFF"
+                android:textSize="11sp"
+                android:layout_marginRight="4dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btn_sort_duration"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="时长 ⏱️"
+                android:textColor="@color/white"
+                android:background="#11FFFFFF"
+                android:textSize="11sp"
+                android:layout_marginRight="4dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btn_sort_name"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="名称 🔤"
+                android:textColor="@color/white"
+                android:background="#11FFFFFF"
+                android:textSize="11sp"
+                android:clickable="true"
+                android:focusable="true"/>
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- Main List Container -->
     <FrameLayout

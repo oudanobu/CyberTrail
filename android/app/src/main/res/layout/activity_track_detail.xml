@@ -117,7 +117,8 @@
                 android:layout_marginBottom="8dp">
 
                 <include layout="@layout/item_detail_stat_card" android:id="@+id/card_stat_max_speed" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
-                <include layout="@layout/item_detail_stat_card" android:id="@+id/card_stat_start_time" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" android:layout_marginLeft="6dp" />
+                <include layout="@layout/item_detail_stat_card" android:id="@+id/card_stat_avg_ele" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginLeft="6dp" />
+                <include layout="@layout/item_detail_stat_card" android:id="@+id/card_stat_start_time" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginLeft="6dp" />
             </LinearLayout>
 
             <!-- Stats Grid - Row 5 -->
@@ -259,6 +260,18 @@
                     android:textSize="12sp"
                     android:layout_marginBottom="8dp" />
 
+                <!-- Timeline SeekBar -->
+                <SeekBar
+                    android:id="@+id/sb_replay_timeline"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="10dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:thumbTint="#FF10B981"
+                    android:progressTint="#FF10B981"
+                    android:progressBackgroundTint="@color/cyber_light_gray"/>
+
                 <!-- Play Controls Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -271,7 +284,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:layout_marginRight="4dp"
+                        android:layout_marginRight="3dp"
                         android:background="#2210B981"
                         android:textColor="@color/cyber_green"
                         android:textSize="12sp"
@@ -287,8 +300,8 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:layout_marginLeft="4dp"
-                        android:layout_marginRight="4dp"
+                        android:layout_marginLeft="3dp"
+                        android:layout_marginRight="3dp"
                         android:background="#22F59E0B"
                         android:textColor="@color/cyber_amber"
                         android:textSize="12sp"
@@ -304,7 +317,8 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:layout_marginLeft="4dp"
+                        android:layout_marginLeft="3dp"
+                        android:layout_marginRight="3dp"
                         android:background="#22EF4444"
                         android:textColor="#EF4444"
                         android:textSize="12sp"
@@ -312,6 +326,22 @@
                         android:gravity="center"
                         android:padding="10dp"
                         android:text="⏹ 停止"
+                        android:clickable="true"
+                        android:focusable="true"/>
+
+                    <TextView
+                        android:id="@+id/btn_replay_rewind"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="3dp"
+                        android:background="#2238BDF8"
+                        android:textColor="#38BDF8"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:gravity="center"
+                        android:padding="10dp"
+                        android:text="⏪ 回起点"
                         android:clickable="true"
                         android:focusable="true"/>
                 </LinearLayout>

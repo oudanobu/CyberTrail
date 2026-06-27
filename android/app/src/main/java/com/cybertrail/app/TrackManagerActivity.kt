@@ -30,12 +30,27 @@ class TrackManagerActivity : AppCompatActivity() {
     private lateinit var layoutEmptyState: View
     private lateinit var tvTrackCountSummary: TextView
     private lateinit var btnBack: TextView
+    private lateinit var btnStatistics: TextView
+
+    private lateinit var etSearchTrack: EditText
+    private lateinit var btnSortTime: TextView
+    private lateinit var btnSortDistance: TextView
+    private lateinit var btnSortDuration: TextView
+    private lateinit var btnSortName: TextView
 
     private lateinit var trackDao: TrackDao
     private val dbExecutor = Executors.newSingleThreadExecutor()
 
     private val trackItemsList = mutableListOf<TrackItemData>()
+    private val allTrackItemsList = mutableListOf<TrackItemData>()
     private lateinit var listAdapter: TrackListAdapter
+
+    private var currentSortMode = SortMode.TIME
+    private var searchQuery = ""
+
+    enum class SortMode {
+        TIME, DISTANCE, DURATION, NAME
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,14 +62,108 @@ class TrackManagerActivity : AppCompatActivity() {
         layoutEmptyState = findViewById(R.id.layout_empty_state)
         tvTrackCountSummary = findViewById(R.id.tv_track_count_summary)
         btnBack = findViewById(R.id.btn_back)
+        btnStatistics = findViewById(R.id.btn_statistics)
+
+        etSearchTrack = findViewById(R.id.et_search_track)
+        btnSortTime = findViewById(R.id.btn_sort_time)
+        btnSortDistance = findViewById(R.id.btn_sort_distance)
+        btnSortDuration = findViewById(R.id.btn_sort_duration)
+        btnSortName = findViewById(R.id.btn_sort_name)
 
         btnBack.setOnClickListener { finish() }
+        btnStatistics.setOnClickListener {
+            val intent = Intent(this, StatisticsActivity::class.java)
+            startActivity(intent)
+        }
+
+        etSearchTrack.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                searchQuery = s?.toString()?.trim() ?: ""
+                applyFilterAndSort()
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        btnSortTime.setOnClickListener { setSortMode(SortMode.TIME) }
+        btnSortDistance.setOnClickListener { setSortMode(SortMode.DISTANCE) }
+        btnSortDuration.setOnClickListener { setSortMode(SortMode.DURATION) }
+        btnSortName.setOnClickListener { setSortMode(SortMode.NAME) }
 
         rvTrackList.layoutManager = LinearLayoutManager(this)
         listAdapter = TrackListAdapter()
         rvTrackList.adapter = listAdapter
 
         loadAllTracks()
+    }
+
+    private fun setSortMode(mode: SortMode) {
+        currentSortMode = mode
+        updateSortButtonsUI()
+        applyFilterAndSort()
+    }
+
+    private fun updateSortButtonsUI() {
+        val activeTextColor = 0xFF22D3EE.toInt()
+        val activeBgColor = 0x2222D3EE
+        val inactiveTextColor = 0xFFFFFFFF.toInt()
+        val inactiveBgColor = 0x11FFFFFF
+
+        btnSortTime.setTextColor(if (currentSortMode == SortMode.TIME) activeTextColor else inactiveTextColor)
+        btnSortTime.setBackgroundColor(if (currentSortMode == SortMode.TIME) activeBgColor else inactiveBgColor)
+
+        btnSortDistance.setTextColor(if (currentSortMode == SortMode.DISTANCE) activeTextColor else inactiveTextColor)
+        btnSortDistance.setBackgroundColor(if (currentSortMode == SortMode.DISTANCE) activeBgColor else inactiveBgColor)
+
+        btnSortDuration.setTextColor(if (currentSortMode == SortMode.DURATION) activeTextColor else inactiveTextColor)
+        btnSortDuration.setBackgroundColor(if (currentSortMode == SortMode.DURATION) activeBgColor else inactiveBgColor)
+
+        btnSortName.setTextColor(if (currentSortMode == SortMode.NAME) activeTextColor else inactiveTextColor)
+        btnSortName.setBackgroundColor(if (currentSortMode == SortMode.NAME) activeBgColor else inactiveBgColor)
+    }
+
+    private fun applyFilterAndSort() {
+        val filtered = if (searchQuery.isEmpty()) {
+            allTrackItemsList.toList()
+        } else {
+            allTrackItemsList.filter {
+                (it.track.name ?: "未命名轨迹").contains(searchQuery, ignoreCase = true)
+            }
+        }
+
+        val sorted = filtered.sortedWith { a, b ->
+            // Prioritize favorites: favorite = true (1) first, then false (0)
+            val favA = if (a.track.favorite) 1 else 0
+            val favB = if (b.track.favorite) 1 else 0
+            if (favA != favB) {
+                favB.compareTo(favA) // Descending (1 comes before 0)
+            } else {
+                // Within same favorite status, sort by secondary criteria
+                when (currentSortMode) {
+                    SortMode.TIME -> b.track.startTime.compareTo(a.track.startTime) // Newest first
+                    SortMode.DISTANCE -> b.distanceMeters.compareTo(a.distanceMeters) // Longest first
+                    SortMode.DURATION -> b.durationSeconds.compareTo(a.durationSeconds) // Longest first
+                    SortMode.NAME -> {
+                        val nameA = a.track.name ?: "未命名轨迹"
+                        val nameB = b.track.name ?: "未命名轨迹"
+                        nameA.compareTo(nameB, ignoreCase = true) // Alphabetical
+                    }
+                }
+            }
+        }
+
+        trackItemsList.clear()
+        trackItemsList.addAll(sorted)
+        listAdapter.notifyDataSetChanged()
+
+        tvTrackCountSummary.text = "共 ${trackItemsList.size} 条"
+        if (trackItemsList.isEmpty()) {
+            layoutEmptyState.visibility = View.VISIBLE
+            rvTrackList.visibility = View.GONE
+        } else {
+            layoutEmptyState.visibility = View.GONE
+            rvTrackList.visibility = View.VISIBLE
+        }
     }
 
     private fun loadAllTracks() {
@@ -81,18 +190,9 @@ class TrackManagerActivity : AppCompatActivity() {
             }
 
             runOnUiThread {
-                trackItemsList.clear()
-                trackItemsList.addAll(tempList)
-                listAdapter.notifyDataSetChanged()
-
-                tvTrackCountSummary.text = "共 ${trackItemsList.size} 条"
-                if (trackItemsList.isEmpty()) {
-                    layoutEmptyState.visibility = View.VISIBLE
-                    rvTrackList.visibility = View.GONE
-                } else {
-                    layoutEmptyState.visibility = View.GONE
-                    rvTrackList.visibility = View.VISIBLE
-                }
+                allTrackItemsList.clear()
+                allTrackItemsList.addAll(tempList)
+                applyFilterAndSort()
             }
         }
     }
@@ -149,6 +249,7 @@ class TrackManagerActivity : AppCompatActivity() {
 
         inner class TrackViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val tvName: TextView = view.findViewById(R.id.tv_track_card_name)
+            val btnFavorite: TextView = view.findViewById(R.id.btn_action_favorite_star)
             val tvStatus: TextView = view.findViewById(R.id.tv_track_card_status)
             val tvDistance: TextView = view.findViewById(R.id.tv_track_card_distance)
             val tvDuration: TextView = view.findViewById(R.id.tv_track_card_duration)
@@ -176,6 +277,23 @@ class TrackManagerActivity : AppCompatActivity() {
             val track = item.track
 
             holder.tvName.text = track.name ?: "未命名轨迹"
+
+            // Favorite star state and action
+            holder.btnFavorite.text = if (track.favorite) "★" else "☆"
+            holder.btnFavorite.setOnClickListener {
+                dbExecutor.execute {
+                    track.favorite = !track.favorite
+                    trackDao.updateTrack(track)
+                    // Update in our memory caches
+                    val foundAll = allTrackItemsList.find { it.track.id == track.id }
+                    if (foundAll != null) {
+                        foundAll.track.favorite = track.favorite
+                    }
+                    runOnUiThread {
+                        applyFilterAndSort()
+                    }
+                }
+            }
             
             // Status UI indicator
             when (track.status) {

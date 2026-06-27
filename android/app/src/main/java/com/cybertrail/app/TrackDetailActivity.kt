@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -62,6 +63,8 @@ class TrackDetailActivity : AppCompatActivity() {
     private lateinit var btnReplayStart: TextView
     private lateinit var btnReplayPause: TextView
     private lateinit var btnReplayStop: TextView
+    private lateinit var btnReplayRewind: TextView
+    private lateinit var sbReplayTimeline: SeekBar
 
     // Speed buttons
     private lateinit var btnSpeed05: TextView
@@ -143,6 +146,8 @@ class TrackDetailActivity : AppCompatActivity() {
         btnReplayStart = findViewById(R.id.btn_replay_start)
         btnReplayPause = findViewById(R.id.btn_replay_pause)
         btnReplayStop = findViewById(R.id.btn_replay_stop)
+        btnReplayRewind = findViewById(R.id.btn_replay_rewind)
+        sbReplayTimeline = findViewById(R.id.sb_replay_timeline)
 
         btnSpeed05 = findViewById(R.id.btn_speed_0_5)
         btnSpeed1 = findViewById(R.id.btn_speed_1)
@@ -165,6 +170,23 @@ class TrackDetailActivity : AppCompatActivity() {
         btnReplayStart.setOnClickListener { startReplay() }
         btnReplayPause.setOnClickListener { pauseReplay() }
         btnReplayStop.setOnClickListener { stopReplay() }
+        btnReplayRewind.setOnClickListener {
+            jumpToReplayIndex(0)
+            if (isReplaying) {
+                pauseReplay()
+            }
+        }
+
+        // Timeline scrubbing listener
+        sbReplayTimeline.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && trackPointsList.isNotEmpty()) {
+                    jumpToReplayIndex(progress)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
 
         // Setup speed selection listeners
         val speedBtnList = listOf(btnSpeed05, btnSpeed1, btnSpeed2, btnSpeed5, btnSpeed10)
@@ -217,6 +239,7 @@ class TrackDetailActivity : AppCompatActivity() {
             val elevations = points.mapNotNull { it.elevation }
             val maxElevation = elevations.maxOrNull() ?: 0.0
             val minElevation = elevations.minOrNull() ?: 0.0
+            val avgElevation = if (elevations.isNotEmpty()) elevations.average() else 0.0
 
             val speeds = points.map { it.speed }
             val maxSpeed = speeds.maxOrNull() ?: 0.0
@@ -246,6 +269,8 @@ class TrackDetailActivity : AppCompatActivity() {
 
             runOnUiThread {
                 tvTitle.text = track.name ?: "未命名轨迹"
+                sbReplayTimeline.max = if (points.size > 1) points.size - 1 else 100
+                sbReplayTimeline.progress = 0
                 
                 // Update 13 stats
                 updateStatCard(R.id.card_stat_distance, "📐 总距离", String.format(Locale.US, "%.2f km", totalDistanceMeters / 1000f))
@@ -258,6 +283,7 @@ class TrackDetailActivity : AppCompatActivity() {
                 updateStatCard(R.id.card_stat_min_ele, "最低海拔", String.format(Locale.US, "%.1f m", minElevation))
                 updateStatCard(R.id.card_stat_avg_speed, "平均速度", String.format(Locale.US, "%.2f m/s", avgSpeed))
                 updateStatCard(R.id.card_stat_max_speed, "最高速度", String.format(Locale.US, "%.2f m/s", maxSpeed))
+                updateStatCard(R.id.card_stat_avg_ele, "平均海拔", String.format(Locale.US, "%.1f m", avgElevation))
                 updateStatCard(R.id.card_stat_start_time, "开始时间", formatDateTime(track.startTime))
                 updateStatCard(R.id.card_stat_end_time, "结束时间", track.endTime?.let { formatDateTime(it) } ?: "--:--")
 
@@ -442,8 +468,8 @@ class TrackDetailActivity : AppCompatActivity() {
             if (layer == null) {
                 layer = LineLayer("track-layer", "track-source")
                 layer.setProperties(
-                    PropertyFactory.lineColor(android.graphics.Color.RED),
-                    PropertyFactory.lineWidth(5f),
+                    PropertyFactory.lineColor(0xFF64748B.toInt()), // Slate Gray for un-traversed background track
+                    PropertyFactory.lineWidth(6f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
                     PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
                 )
@@ -451,6 +477,51 @@ class TrackDetailActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error drawing track", e)
+        }
+    }
+
+    private fun drawTraversedTrackOnMap(index: Int) {
+        val map = mapboxMap ?: return
+        if (!isMapLoaded) return
+        val style = try { map.style } catch (e: Exception) { null } ?: return
+
+        val limit = if (index < 0) 0 else if (index >= trackPointsList.size) trackPointsList.size else index + 1
+        val subPoints = trackPointsList.take(limit)
+        val pts = subPoints.map { Point.fromLngLat(it.longitude, it.latitude) }
+        val lineString = if (pts.size >= 2) {
+            LineString.fromLngLats(pts)
+        } else if (pts.size == 1) {
+            LineString.fromLngLats(listOf(pts[0], pts[0]))
+        } else {
+            null
+        }
+
+        try {
+            var source = style.getSource("traversed-source") as? GeoJsonSource
+            if (source == null) {
+                source = GeoJsonSource("traversed-source")
+                style.addSource(source)
+            }
+
+            if (lineString != null) {
+                source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+            } else {
+                source.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+            }
+
+            var layer = style.getLayer("traversed-layer") as? LineLayer
+            if (layer == null) {
+                layer = LineLayer("traversed-layer", "traversed-source")
+                layer.setProperties(
+                    PropertyFactory.lineColor(0xFF3B82F6.toInt()), // Beautiful Blue for traversed track
+                    PropertyFactory.lineWidth(6f),
+                    PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                    PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+                )
+                style.addLayer(layer)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error drawing traversed track", e)
         }
     }
 
@@ -515,61 +586,74 @@ class TrackDetailActivity : AppCompatActivity() {
                 return
             }
 
-            val pt = pts[replayIndex]
-            val latLng = LatLng(pt.latitude, pt.longitude)
-
-            // Update replay pointer marker
-            if (replayMarker == null) {
-                val iconFactory = com.mapbox.mapboxsdk.annotations.IconFactory.getInstance(this@TrackDetailActivity)
-                val dotIcon = try {
-                    // Create a beautiful blue dot
-                    val size = 32
-                    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                    val canvas = android.graphics.Canvas(bmp)
-                    val p = android.graphics.Paint().apply {
-                        color = 0xFF38BDF8.toInt()
-                        isAntiAlias = true
-                    }
-                    canvas.drawCircle(size / 2f, size / 2f, size / 2f, p)
-                    p.color = android.graphics.Color.WHITE
-                    canvas.drawCircle(size / 2f, size / 2f, size / 4f, p)
-                    iconFactory.fromBitmap(bmp)
-                } catch (e: Exception) {
-                    null
-                }
-
-                val options = MarkerOptions().position(latLng).title("当前位置")
-                if (dotIcon != null) {
-                    options.icon(dotIcon)
-                }
-                replayMarker = mapboxMap?.addMarker(options)
-            } else {
-                replayMarker?.position = latLng
-            }
-
-            // Move camera
-            mapboxMap?.animateCamera(CameraUpdateFactory.newLatLng(latLng), 100)
-
-            // Photo Linkage
-            checkPhotoLinkage(pt)
-
-            // Progress text
-            val currentDistKm = if (replayIndex < cumulativeDistances.size) cumulativeDistances[replayIndex] else 0f
-            tvReplayProgress.text = String.format(
-                Locale.US,
-                "进度: %d / %d | 海拔: %s m | 距离: %.2f km",
-                replayIndex + 1,
-                pts.size,
-                pt.elevation?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
-                currentDistKm
-            )
-
+            jumpToReplayIndex(replayIndex)
             replayIndex++
 
-            // Tick
             val delay = (600f / speedMultiplier).toLong()
             replayHandler.postDelayed(this, delay)
         }
+    }
+
+    private fun jumpToReplayIndex(index: Int) {
+        if (trackPointsList.isEmpty()) return
+        
+        // Clamp index
+        val targetIndex = index.coerceIn(0, trackPointsList.size - 1)
+        replayIndex = targetIndex
+
+        val pt = trackPointsList[targetIndex]
+        val latLng = LatLng(pt.latitude, pt.longitude)
+
+        // Move/Create marker
+        if (replayMarker == null) {
+            val iconFactory = com.mapbox.mapboxsdk.annotations.IconFactory.getInstance(this)
+            val dotIcon = try {
+                val size = 32
+                val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bmp)
+                val p = android.graphics.Paint().apply {
+                    color = 0xFFEF4444.toInt() // Beautiful Red dot for current position as requested
+                    isAntiAlias = true
+                }
+                canvas.drawCircle(size / 2f, size / 2f, size / 2f, p)
+                p.color = android.graphics.Color.WHITE
+                canvas.drawCircle(size / 2f, size / 2f, size / 4f, p)
+                iconFactory.fromBitmap(bmp)
+            } catch (e: Exception) {
+                null
+            }
+
+            val options = MarkerOptions().position(latLng).title("当前位置")
+            if (dotIcon != null) {
+                options.icon(dotIcon)
+            }
+            replayMarker = mapboxMap?.addMarker(options)
+        } else {
+            replayMarker?.position = latLng
+        }
+
+        // Animate map camera smoothly
+        mapboxMap?.animateCamera(CameraUpdateFactory.newLatLng(latLng), 100)
+
+        // Draw traversed track portion
+        drawTraversedTrackOnMap(targetIndex)
+
+        // Check for photos nearby (Photo Linkage)
+        checkPhotoLinkage(pt)
+
+        // Update Progress text
+        val currentDistKm = if (targetIndex < cumulativeDistances.size) cumulativeDistances[targetIndex] else 0f
+        tvReplayProgress.text = String.format(
+            Locale.US,
+            "进度: %d / %d | 海拔: %s m | 距离: %.2f km",
+            targetIndex + 1,
+            trackPointsList.size,
+            pt.elevation?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
+            currentDistKm
+        )
+
+        // Sync SeekBar progress without triggering recursive updates
+        sbReplayTimeline.progress = targetIndex
     }
 
     private fun startReplay() {
@@ -601,12 +685,14 @@ class TrackDetailActivity : AppCompatActivity() {
         replayHandler.removeCallbacks(replayRunnable)
         replayIndex = 0
         tvReplayStatus.text = "👁 轨迹回放: 停止"
-        tvReplayProgress.text = "进度: 0 / 0 | 海拔: --m | 距离: 0.00km"
+        tvReplayProgress.text = "进度: 0 / 0 | 海拔: -- m | 距离: 0.00 km"
+        sbReplayTimeline.progress = 0
         
         replayMarker?.let {
             mapboxMap?.removeMarker(it)
             replayMarker = null
         }
+        drawTraversedTrackOnMap(-1) // Clear traversed track overlay
         cardPhotoPopup.visibility = View.GONE
     }
 
