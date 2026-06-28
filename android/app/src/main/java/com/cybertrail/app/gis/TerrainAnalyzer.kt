@@ -17,15 +17,39 @@ class TerrainAnalyzer(
     )
 
     fun analyzeLocation(lat: Double, lon: Double): AnalysisResult {
-        val elevation = demSystem.getElevation(lat, lon)
+        val elevation = demSystem.getElevation(lat, lon) ?: return AnalysisResult(null, null, null, "DEM未加载")
+        
+        // Determine if we have real offline DEM files to customize the label
+        val hasOffline = demLoader.hasOfflineDemFiles()
+        val source = if (hasOffline) {
+            val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
+            val demDir = java.io.File(baseDir, "dem")
+            val files = demDir.listFiles { _, name -> 
+                name.endsWith(".hgt", ignoreCase = true) || 
+                name.endsWith(".bil", ignoreCase = true) || 
+                name.endsWith(".tif", ignoreCase = true) ||
+                name.endsWith(".tiff", ignoreCase = true) ||
+                name.endsWith(".img", ignoreCase = true)
+            }
+            val isSrtm = files?.any { it.name.endsWith(".hgt", ignoreCase = true) } == true
+            val isCopernicus = files?.any { it.name.endsWith(".bil", ignoreCase = true) || it.name.endsWith(".tif", ignoreCase = true) || it.name.endsWith(".tiff", ignoreCase = true) } == true
+            when {
+                isSrtm -> "DEM (SRTM)"
+                isCopernicus -> "DEM (Copernicus DEM)"
+                else -> "DEM"
+            }
+        } else {
+            "DEM"
+        }
+
         try {
             val dLat = 0.0001
             val dLon = 0.0001
             
-            val hN = demSystem.getElevation(lat + dLat, lon)
-            val hS = demSystem.getElevation(lat - dLat, lon)
-            val hE = demSystem.getElevation(lat, lon + dLon)
-            val hW = demSystem.getElevation(lat, lon - dLon)
+            val hN = demSystem.getElevation(lat + dLat, lon) ?: return AnalysisResult(elevation, null, null, source)
+            val hS = demSystem.getElevation(lat - dLat, lon) ?: return AnalysisResult(elevation, null, null, source)
+            val hE = demSystem.getElevation(lat, lon + dLon) ?: return AnalysisResult(elevation, null, null, source)
+            val hW = demSystem.getElevation(lat, lon - dLon) ?: return AnalysisResult(elevation, null, null, source)
 
             val cellSideM = 11.1 // approx meters per 0.0001 degree
             val dzDx = (hE - hW) / (2.0 * cellSideM)
@@ -40,34 +64,13 @@ class TerrainAnalyzer(
             }
             val aspectDeg = Math.toDegrees(aspectRad)
 
-            // Determine if we have real offline DEM files to customize the label
-            val hasOffline = demLoader.hasOfflineDemFiles()
-            val source = if (hasOffline) {
-                val baseDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
-                val demDir = java.io.File(baseDir, "DEM")
-                val files = demDir.listFiles { _, name -> 
-                    name.endsWith(".hgt", ignoreCase = true) || 
-                    name.endsWith(".bil", ignoreCase = true) || 
-                    name.endsWith(".tif", ignoreCase = true) ||
-                    name.endsWith(".img", ignoreCase = true)
-                }
-                val isSrtm = files?.any { it.name.endsWith(".hgt", ignoreCase = true) } == true
-                val isCopernicus = files?.any { it.name.endsWith(".bil", ignoreCase = true) || it.name.endsWith(".tif", ignoreCase = true) } == true
-                when {
-                    isSrtm -> "DEM (SRTM)"
-                    isCopernicus -> "DEM (Copernicus DEM)"
-                    else -> "DEM"
-                }
-            } else {
-                "DEM"
-            }
-
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             return AnalysisResult(elevation, slopeDeg, aspectDeg, source)
         } catch (e: Exception) {
-            return AnalysisResult(elevation, 0.0, 0.0, "DEM")
+            return AnalysisResult(elevation, null, null, source)
         }
     }
+
 
     fun analyzeLocationAsync(lat: Double, lon: Double, callback: (AnalysisResult?) -> Unit) {
         Thread {

@@ -36,6 +36,11 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
     private lateinit var tvDemStatus: TextView
     private lateinit var tvEmpty: TextView
 
+    private lateinit var tvDemDiagnoseState: TextView
+    private lateinit var tvDemDiagnoseCount: TextView
+    private lateinit var tvDemDiagnoseCoverage: TextView
+    private lateinit var tvDemDiagnoseSource: TextView
+
     private val IMPORT_MAP_REQUEST_CODE = 501
     private val IMPORT_DEM_REQUEST_CODE = 502
 
@@ -56,6 +61,11 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
         tvDemPath = findViewById(R.id.tv_dem_path)
         tvDemStatus = findViewById(R.id.tv_dem_status)
         tvEmpty = findViewById(R.id.tv_empty_diagnostic)
+
+        tvDemDiagnoseState = findViewById(R.id.tv_dem_diagnose_state)
+        tvDemDiagnoseCount = findViewById(R.id.tv_dem_diagnose_count)
+        tvDemDiagnoseCoverage = findViewById(R.id.tv_dem_diagnose_coverage)
+        tvDemDiagnoseSource = findViewById(R.id.tv_dem_diagnose_source)
 
         // Bind global actions
         findViewById<Button>(R.id.btn_rescan).setOnClickListener {
@@ -104,12 +114,40 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
         tvMapsStatus.text = "检测状态: 发现 ${mapFiles.size} 个离线地图文件"
         tvDemStatus.text = "检测状态: 发现 ${demFiles.size} 个高程数据文件"
 
+        // Calculate and render DEM status diagnostics card
+        if (demFiles.isEmpty()) {
+            tvDemDiagnoseState.text = "DEM状态: 未发现 DEM"
+            tvDemDiagnoseState.setTextColor(Color.RED)
+            tvDemDiagnoseCount.text = "文件数量: 0"
+            tvDemDiagnoseCoverage.text = "覆盖区域: 无"
+            tvDemDiagnoseSource.text = "当前高程来源: DEM未加载"
+            tvDemDiagnoseSource.setTextColor(Color.GRAY)
+        } else {
+            tvDemDiagnoseState.text = "DEM状态: 已加载 DEM"
+            tvDemDiagnoseState.setTextColor(Color.parseColor("#388E3C"))
+            tvDemDiagnoseCount.text = "文件数量: ${demFiles.size}"
+            
+            val coverage = getDemCoverageString(demFiles)
+            tvDemDiagnoseCoverage.text = "覆盖区域: $coverage"
+            
+            val isSrtm = demFiles.any { it.name.endsWith(".hgt", ignoreCase = true) }
+            val isCopernicus = demFiles.any { it.name.endsWith(".bil", ignoreCase = true) || it.name.endsWith(".tif", ignoreCase = true) || it.name.endsWith(".tiff", ignoreCase = true) }
+            val sourceText = when {
+                isSrtm -> "真实 DEM (SRTM)"
+                isCopernicus -> "真实 DEM (Copernicus DEM)"
+                else -> "真实 DEM"
+            }
+            tvDemDiagnoseSource.text = "当前高程来源: $sourceText"
+            tvDemDiagnoseSource.setTextColor(Color.parseColor("#388E3C"))
+        }
+
         if (mapFiles.isEmpty() && demFiles.isEmpty()) {
             tvEmpty.visibility = View.VISIBLE
             return
         } else {
             tvEmpty.visibility = View.GONE
         }
+
 
         // 1. Process Maps Diagnostic
         for (file in mapFiles) {
@@ -506,5 +544,58 @@ class OfflineDiagnosticActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "外部高程导入失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun getDemCoverageString(demFiles: Array<File>): String {
+        val coords = demFiles.mapNotNull { file ->
+            val name = file.nameWithoutExtension.uppercase()
+            // e.g., N40E124 or S12W045
+            if (name.length >= 7) {
+                try {
+                    val latChar = name[0]
+                    val latVal = name.substring(1, 3).toIntOrNull()
+                    val lonChar = name[3]
+                    val lonVal = name.substring(4).toIntOrNull()
+                    if (latVal != null && lonVal != null) {
+                        val finalLat = if (latChar == 'S') -latVal else latVal
+                        val finalLon = if (lonChar == 'W') -lonVal else lonVal
+                        Pair(finalLat, finalLon)
+                    } else null
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
+        }
+
+        if (coords.isEmpty()) {
+            return "仅包含非标准命名高程包"
+        }
+
+        val minLat = coords.minOf { it.first }
+        val maxLat = coords.maxOf { it.first }
+        val minLon = coords.minOf { it.second }
+        val maxLon = coords.maxOf { it.second }
+
+        val latStr = if (minLat == maxLat) {
+            val minLatChar = if (minLat >= 0) "N" else "S"
+            val absMinLat = Math.abs(minLat)
+            "%s%02d°~%s%02d°".format(minLatChar, absMinLat, minLatChar, absMinLat + 1)
+        } else {
+            val minLatChar = if (minLat >= 0) "N" else "S"
+            val maxLatChar = if (maxLat >= 0) "N" else "S"
+            "%s%02d°~%s%02d°".format(minLatChar, Math.abs(minLat), maxLatChar, Math.abs(maxLat + 1))
+        }
+
+        val lonStr = if (minLon == maxLon) {
+            val minLonChar = if (minLon >= 0) "E" else "W"
+            val absMinLon = Math.abs(minLon)
+            "%s%03d°~%s%03d°".format(minLonChar, absMinLon, minLonChar, absMinLon + 1)
+        } else {
+            val minLonChar = if (minLon >= 0) "E" else "W"
+            val maxLonChar = if (maxLon >= 0) "E" else "W"
+            "%s%03d°~%s%03d°".format(minLonChar, Math.abs(minLon), maxLonChar, Math.abs(maxLon + 1))
+        }
+
+        return "$latStr, $lonStr"
     }
 }

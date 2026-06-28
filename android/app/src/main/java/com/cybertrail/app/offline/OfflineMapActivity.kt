@@ -279,7 +279,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 NASA SRTM 30m Global DEM",
                         "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: .hgt",
-                        "📡 美国太空局雷达地形测绘计划，经典全球30米级多维大底座。\n\n📥 极速下载与导入标准步骤:\n1. 登录 EarthData (点击下面[打开主站])\n2. 高频定位并搜索目标感兴趣区域数据\n3. 导出 SRTMGL1 高程类型数据包\n4. 单击下载对应的 .hgt 格式物理成果文件\n5. 放置入闪存: /CyberTrail/DEM 目录下，或直接点击[导入本地]按钮无感加载！",
+                        "📡 美国太空局雷达地形测绘计划，经典全球30米级多维大底座。\n\n📥 极速下载与导入标准步骤:\n1. 登录 EarthData (点击下面[打开主站])\n2. 高频定位并搜索目标感兴趣区域数据\n3. 导出 SRTMGL1 高程类型数据包\n4. 单击下载对应的 .hgt 格式物理成果文件\n5. 放置入闪存: /CyberTrail/dem 目录下，或直接点击[导入本地]按钮无感加载！",
                         "https://earthdata.nasa.gov",
                         "https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/Eurasia/",
                         "https://github.com/tilezen/joerd"
@@ -287,7 +287,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 ASTER GDEM 先进遥感物理表面高程",
                         "推荐级别: 🌟🌟🌟🌟 | 推荐格式: GeoTIFF (.tif)",
-                        "📡 NASA 与日本林野厅行星联合光学及多波谱解算高精密网幅。\n\n📥 极速下载与导入标准步骤:\n1. 访问 ASTER 地面中心并搜索地图瓦片\n2. 在搜索结果中勾选 ASTER Global DEM 遥感产品\n3. 导出并获取生成的 TIFF (.tif) 数字模型文件\n4. 复制成果并传入大内存卡: /CyberTrail/DEM 物理路径下",
+                        "📡 NASA 与日本林野厅行星联合光学及多波谱解算高精密网幅。\n\n📥 极速下载与导入标准步骤:\n1. 访问 ASTER 地面中心并搜索地图瓦片\n2. 在搜索结果中勾选 ASTER Global DEM 遥感产品\n3. 导出并获取生成的 TIFF (.tif) 数字模型文件\n4. 复制成果并传入大内存卡: /CyberTrail/dem 物理路径下",
                         "https://asterweb.jpl.nasa.gov",
                         "https://search.earthdata.nasa.gov/search",
                         "https://github.com/bopen/elevation"
@@ -295,7 +295,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 Copernicus Cop-30 欧盟空天高净高程",
                         "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: GeoTIFF (.tif)",
-                        "📡 欧空局 ESA 与空中客车强力校准，完美解决雷达夹角和阴影斑驳噪声点。\n\n📥 极速下载与导入标准步骤:\n1. 打开 Copernicus 可视化选择接口\n2. 定位大洲或特定省份区域坐标，下载最新发布的 Cop-30 极精地形瓦片\n3. 确认格式为标准 .tif 或 .tiff 多级压缩瓦片\n4. 放入手机闪存 /CyberTrail/DEM 并一键触发刷新生效",
+                        "📡 欧空局 ESA 与空中客车强力校准，完美解决雷达夹角和阴影斑驳噪声点。\n\n📥 极速下载与导入标准步骤:\n1. 打开 Copernicus 可视化选择接口\n2. 定位大洲或特定省份区域坐标，下载最新发布的 Cop-30 极精地形瓦片\n3. 确认格式为标准 .tif 或 .tiff 多级压缩瓦片\n4. 放入手机闪存 /CyberTrail/dem 并一键触发刷新生效",
                         "https://earth.esa.int",
                         "https://copernicus-dem-30m.s3.amazonaws.com/",
                         "https://github.com/simonfuhrmann/mve"
@@ -303,7 +303,7 @@ class OfflineMapActivity : AppCompatActivity() {
                     items.add(OfflineTreeItem.HelpManual(
                         "📘 OpenTopography 航天立体地形与点云数据集",
                         "推荐级别: 🌟🌟🌟🌟🌟 | 推荐格式: .tif / .hgt",
-                        "📡 极客与学术级高清遥感镜像中心，包含1米级高密度 LiDAR 散点解算。\n\n📥 极速下载与导入标准步骤:\n1. 框选并锁定您的越野探险目标区域\n2. 输出格式选取 .hgt 或者标准的 GeoTIFF\n3. 提交后台执行，下载压缩包并解压\n4. 放置对应的 .tif 或是 .hgt 格式文件入 /CyberTrail/DEM 物理文件夹",
+                        "📡 极客与学术级高清遥感镜像中心，包含1米级高密度 LiDAR 散点解算。\n\n📥 极速下载与导入标准步骤:\n1. 框选并锁定您的越野探险目标区域\n2. 输出格式选取 .hgt 或者标准的 GeoTIFF\n3. 提交后台执行，下载压缩包并解压\n4. 放置对应的 .tif 或是 .hgt 格式文件入 /CyberTrail/dem 物理文件夹",
                         "https://opentopography.org",
                         "https://portal.opentopography.org/raster",
                         "https://github.com/geofabrik/openstreetmap-mbtiles-generator"

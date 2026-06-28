@@ -1182,29 +1182,42 @@ ${finalStyleJsonString ?: "None"}
                     val sourceStr = if (result.source.startsWith("DEM")) result.source else "DEM"
                     hudElevation.text = "海拔: %.1f m (数据来源: %s)".format(result.elevation, sourceStr)
                     
-                    hudSlope.text = "坡度: %.1f° (数据来源: %s)".format(result.slope ?: 0.0, sourceStr)
-                    hudSlope.setTextColor(android.graphics.Color.WHITE)
-                    hudSlope.setOnClickListener(null)
-                    
-                    hudAspect.text = "坡向: %.1f°".format(result.aspect ?: 0.0)
-                    hudAspect.setTextColor(android.graphics.Color.WHITE)
-                    hudAspect.setOnClickListener(null)
-                } else {
-                    val gpsAlt = lastGpsAltitude
-                    if (gpsAlt != null) {
-                        hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
+                    if (result.slope != null) {
+                        hudSlope.text = "坡度: %.1f° (数据来源: %s)".format(result.slope, sourceStr)
+                        hudSlope.setTextColor(android.graphics.Color.WHITE)
+                        hudSlope.setOnClickListener(null)
                     } else {
-                        hudElevation.text = "海拔: N/A"
+                        hudSlope.text = "坡度: N/A"
+                        hudSlope.setTextColor(0xFFB0BEC5.toInt())
+                        hudSlope.setOnClickListener {
+                            val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
+                            startActivity(intent)
+                        }
                     }
                     
-                    hudSlope.text = "坡度: 未定位或读取高程异常 (点击配置)"
+                    if (result.aspect != null) {
+                        hudAspect.text = "坡向: %.1f° (数据来源: %s)".format(result.aspect, sourceStr)
+                        hudAspect.setTextColor(android.graphics.Color.WHITE)
+                        hudAspect.setOnClickListener(null)
+                    } else {
+                        hudAspect.text = "坡向: N/A"
+                        hudAspect.setTextColor(0xFFB0BEC5.toInt())
+                        hudAspect.setOnClickListener {
+                            val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
+                            startActivity(intent)
+                        }
+                    }
+                } else {
+                    hudElevation.text = "海拔: N/A"
+                    
+                    hudSlope.text = "坡度: N/A"
                     hudSlope.setTextColor(0xFFB0BEC5.toInt())
                     hudSlope.setOnClickListener {
                         val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
                         startActivity(intent)
                     }
 
-                    hudAspect.text = "坡向: 未定位或读取高程异常 (点击配置)"
+                    hudAspect.text = "坡向: N/A"
                     hudAspect.setTextColor(0xFFB0BEC5.toInt())
                     hudAspect.setOnClickListener {
                         val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
@@ -1213,6 +1226,7 @@ ${finalStyleJsonString ?: "None"}
                 }
             }
         }
+
     }
 
     override fun onLocationChanged(location: Location) {
@@ -1869,16 +1883,18 @@ ${finalStyleJsonString ?: "None"}
 
         // Complete geoprocessing and file loading diagnostics
         val hasDem = demSystem.demLoader.hasOfflineDemFiles()
-        val demDir = java.io.File(java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail"), "DEM")
+        val demDir = java.io.File(java.io.File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail"), "dem")
         val demFiles = demDir.listFiles { _, name -> 
             name.endsWith(".hgt", ignoreCase = true) || 
             name.endsWith(".bil", ignoreCase = true) || 
             name.endsWith(".tif", ignoreCase = true) || 
+            name.endsWith(".tiff", ignoreCase = true) || 
             name.endsWith(".img", ignoreCase = true) 
         }
         val demFilePath = demFiles?.firstOrNull()?.absolutePath ?: ""
         val elevationSource = if (hasDem) "DEM" else if (lastGpsAltitude != null) "GPS" else "Fallback"
         val slopeSource = if (hasDem) "DEM" else "Unavailable"
+
 
         val demDiagnosticSection = "--- OFFLINE GEOPROCESSING DIAGNOSTICS ---\n" +
                 "DEMLoaded=$hasDem\n" +
