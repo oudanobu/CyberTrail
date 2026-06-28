@@ -131,9 +131,12 @@ class TrackForegroundService : Service() {
         }
     }
 
+    private lateinit var demSystem: DEMSystem
+
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        demSystem = DEMSystem(applicationContext)
         createNotificationChannel()
     }
 
@@ -282,7 +285,7 @@ class TrackForegroundService : Service() {
             } ?: 0f
 
             if (lastPt == null || timeDiff >= 2000L || distDiff >= 2f) {
-                val elevationVal = if (location.hasAltitude()) location.altitude else null
+                val elevationVal = demSystem.getElevation(location.latitude, location.longitude)
                 
                 if (lastPt != null) {
                     totalDistanceMeters += distDiff

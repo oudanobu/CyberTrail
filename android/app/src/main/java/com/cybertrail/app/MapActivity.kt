@@ -1176,40 +1176,13 @@ ${finalStyleJsonString ?: "None"}
         if (now - lastFetchTime < 1000) return // Throttle
         lastFetchTime = now
 
-        val hasDem = demSystem.demLoader.hasOfflineDemFiles()
-
-        if (!hasDem) {
-            // DEM is not loaded: Slope and Aspect must display N/A with friendly prompts and style
-            runOnUiThread {
-                val gpsAlt = lastGpsAltitude
-                if (gpsAlt != null) {
-                    hudElevation.text = "海拔: %.1f m (数据来源: GPS)".format(gpsAlt)
-                } else {
-                    hudElevation.text = "海拔: N/A [未定位]"
-                }
-                hudSlope.text = "坡度: 未加载DEM (点击配置)"
-                hudSlope.setTextColor(0xFFB0BEC5.toInt())
-                hudSlope.setOnClickListener {
-                    val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
-                    startActivity(intent)
-                }
-
-                hudAspect.text = "坡向: 未加载DEM (点击配置)"
-                hudAspect.setTextColor(0xFFB0BEC5.toInt())
-                hudAspect.setOnClickListener {
-                    val intent = Intent(this@MapActivity, com.cybertrail.app.offline.OfflineMapActivity::class.java)
-                    startActivity(intent)
-                }
-            }
-            return
-        }
-
         demSystem.terrainAnalyzer.analyzeLocationAsync(lat, lon) { result ->
             runOnUiThread {
-                if (result != null && result.source == "DEM" && result.elevation != null) {
-                    hudElevation.text = "海拔: %.1f m (数据来源: DEM)".format(result.elevation)
+                if (result != null && result.elevation != null) {
+                    val sourceStr = if (result.source.startsWith("DEM")) result.source else "DEM"
+                    hudElevation.text = "海拔: %.1f m (数据来源: %s)".format(result.elevation, sourceStr)
                     
-                    hudSlope.text = "坡度: %.1f° (数据来源: DEM)".format(result.slope ?: 0.0)
+                    hudSlope.text = "坡度: %.1f° (数据来源: %s)".format(result.slope ?: 0.0, sourceStr)
                     hudSlope.setTextColor(android.graphics.Color.WHITE)
                     hudSlope.setOnClickListener(null)
                     
@@ -1245,11 +1218,7 @@ ${finalStyleJsonString ?: "None"}
     override fun onLocationChanged(location: Location) {
         val lat = location.latitude
         val lon = location.longitude
-        if (location.hasAltitude()) {
-            lastGpsAltitude = location.altitude
-        } else {
-            lastGpsAltitude = null
-        }
+        lastGpsAltitude = demSystem.getElevation(lat, lon)
         lastGpsLatitude = lat
         lastGpsLongitude = lon
         
@@ -1338,11 +1307,7 @@ ${finalStyleJsonString ?: "None"}
 
         lastGpsLatitude = lat
         lastGpsLongitude = lon
-        if (location.hasAltitude()) {
-            lastGpsAltitude = location.altitude
-        } else {
-            lastGpsAltitude = null
-        }
+        lastGpsAltitude = demSystem.getElevation(lat, lon)
 
         updateLocationPanel(location)
         updateTerrainHud(lat, lon)
@@ -1373,11 +1338,8 @@ ${finalStyleJsonString ?: "None"}
             tvPanelLat.text = "Lat: %.6f°".format(location.latitude)
             tvPanelLon.text = "Lon: %.6f°".format(location.longitude)
             
-            if (location.hasAltitude()) {
-                tvPanelAlt.text = "Alt: %.0fm".format(location.altitude)
-            } else {
-                tvPanelAlt.text = "Alt: N/A"
-            }
+            val demAlt = demSystem.getElevation(location.latitude, location.longitude)
+            tvPanelAlt.text = "Alt: %.0fm".format(demAlt)
             
             if (location.hasAccuracy()) {
                 tvPanelAccuracy.text = "Accuracy: %.0fm".format(location.accuracy)
@@ -2934,7 +2896,7 @@ ${finalStyleJsonString ?: "None"}
             trackId = currentTrackId,
             latitude = location.latitude,
             longitude = location.longitude,
-            elevation = if (location.hasAltitude()) location.altitude else null,
+            elevation = demSystem.getElevation(location.latitude, location.longitude),
             timestamp = location.time,
             speed = if (location.hasSpeed()) location.speed else 0f,
             accuracy = if (location.hasAccuracy()) location.accuracy else 0f
