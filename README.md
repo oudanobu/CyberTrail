@@ -1,20 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# CyberTrail 越野探险与轨迹导航系统
 
-# Run and deploy your AI Studio app
+CyberTrail 是一款专注于极致野外生存、重装穿越与户外运动探险的**全离线、完全自治**的地理空间轨迹导航工具。即使在最严酷的“零基站、无网络”极端环境下，CyberTrail 亦能依靠本地高算力架构，提供秒级响应的离线底图、多维三维地形、精细高程插值与全面的野外安全保障。
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/f9e13fac-1d57-4938-a3e2-737c1b7ff205
+## 📖 文档中心
 
-## Run Locally
+为了让普通户外探险爱好者与专业户外领队能够零门槛、无感式完成完美的离线出行准备，我们构建了以下详细的离线地理数据指导文档：
 
-**Prerequisites:**  Node.js
+* 🗺️ **[地图制作指南](docs/MAP_GUIDE.md)**：教您如何通过 QGIS 导出、Google Colab 自动爬取和 GitHub Actions 云端流水线构建高清卫星与等高线 MBTiles 格式离线地图。
+* 🏔️ **[DEM 制作指南](docs/DEM_GUIDE.md)**：详细阐述全球主流 DEM 数字高程数据、SRTM 标准文件命名规则（如 `N40E124.hgt`）、双线性插值连续高程插补、以及本地坡度/坡向算法推演。
+* 📦 **[离线准备指南](docs/OFFLINE_PREPARE.md)**：提供标准共享闪存 `CyberTrail/` 文件树下 Maps, dem, Tracks, Routes 等所有一级核心文件夹的存放要求，并演示如何在出发前运用自诊断系统完成终极安全复核。
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## ✨ 核心特性
+
+1. **统一本地存储根节点 (Unified File Tree)**
+   通过完全打通手机物理存储中统一的 `/storage/emulated/0/CyberTrail/`，实现各要素数据（地图、DEM瓦片、规划路线、航点地标、沿途照片）的模块化分离与安全存储。
+
+2. **真实离线高程格网 (Real DEM System)**
+   告别虚假的“傅里叶地形波形生成”，彻底接入物理世界的雷达测绘数据。支持高精双线性插值连续海拔解算、极微地形坡度倾角(`°`)与朝向方位角(`0~360°`)就地瞬时输出，提供可靠的地质防摔防雪崩辅助决策。
+
+3. **越野自诊断系统 (Self-Diagnostic Shield)**
+   集成了高灵敏度探险自诊断模块。一键运行自动遍历存储连通性，智能汇总已加载真实 DEM 文件总数，智能反向还原已覆盖的全球经纬度坐标跨度，杜绝出行数据漏装、错装隐患。
+
+4. **GPX / KML 生命线追踪 (GPX/KML LifeLine Track)**
+   高精密记录户外活动中的时空三维轨迹。支持即时导出，也支持任意从外部拷贝轨迹文件直接作为可视化虚拟安全路网引导线。
+
+---
+
+## 🛠️ 项目结构
+
+* `/android` - Android 原生 Kotlin / Compose 核心导航客户端源码
+* `/docs` - 完善的用户离线探险与地理数据筹备指南
+* `/src` - 平台模拟与交互演示面板源码
+
+---
+
+## 🚀 未来预留路线图 (开发中)
+
+* **矢量离线瓦片渲染 (Vector Tiles) [开发中]** - 彻底降低内存占用，实现极速响应的动态标注文字避让。
+* **本地无网路线规划 (Route Planning) [开发中]** - 实现基于离线矢量的单兵多目的地路网拓扑分析与智能避障重规划。
+* **捷联惯性导航推演 (Inertial Navigation) [开发中]** - 用于在丢星或重度林冠、峡谷下基于硬件传感器的捷联死推。
+* **低功耗智能计步组件 (Step Counter) [开发中]** - 离线三轴重力传感器自动过滤震颤波峰以精准记录野外足迹。
+
+---
+
+*越野探险，安全第一。请在每次出发前点击阅读各文档进行完备准备。*
