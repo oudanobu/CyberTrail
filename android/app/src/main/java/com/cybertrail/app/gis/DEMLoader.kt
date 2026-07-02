@@ -32,6 +32,17 @@ class DEMLoader(private val context: Context) {
         if (!demDir.exists()) {
             demDir.mkdirs()
         }
+        copernicusProvider.refreshReaders()
+        alosProvider.refreshReaders()
+    }
+
+    fun close() {
+        try {
+            copernicusProvider.close()
+            alosProvider.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing DEMLoader providers", e)
+        }
     }
 
     fun hasOfflineDemFiles(): Boolean {
