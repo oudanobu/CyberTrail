@@ -1198,8 +1198,20 @@ ${finalStyleJsonString ?: "None"}
                         }
                     }
                     
-                    if (result.aspect != null) {
-                        hudAspect.text = "坡向: %.1f° (数据来源: %s)".format(result.aspect, sourceStr)
+                    val finalAspect = result.aspectGISFinal
+                    if (finalAspect != null && finalAspect >= 0.0) {
+                        val aspectDirShort = when {
+                            finalAspect < 22.5 || finalAspect >= 337.5 -> "N"
+                            finalAspect >= 22.5 && finalAspect < 67.5 -> "NE"
+                            finalAspect >= 67.5 && finalAspect < 112.5 -> "E"
+                            finalAspect >= 112.5 && finalAspect < 157.5 -> "SE"
+                            finalAspect >= 157.5 && finalAspect < 202.5 -> "S"
+                            finalAspect >= 202.5 && finalAspect < 247.5 -> "SW"
+                            finalAspect >= 247.5 && finalAspect < 292.5 -> "W"
+                            finalAspect >= 292.5 && finalAspect < 337.5 -> "NW"
+                            else -> "N"
+                        }
+                        hudAspect.text = "坡向: %.1f° (%s) (数据来源: %s)".format(finalAspect, aspectDirShort, sourceStr)
                         hudAspect.setTextColor(android.graphics.Color.WHITE)
                         hudAspect.setOnClickListener(null)
                     } else {
@@ -1911,15 +1923,16 @@ ${finalStyleJsonString ?: "None"}
         val terrain = lastTerrainAnalysis
         if (terrain != null && terrain.elevation != null) {
             val aspectDir = when {
-                terrain.aspect == null -> "N/A"
-                terrain.aspect < 22.5 || terrain.aspect >= 337.5 -> "N (北)"
-                terrain.aspect >= 22.5 && terrain.aspect < 67.5 -> "NE (东北)"
-                terrain.aspect >= 67.5 && terrain.aspect < 112.5 -> "E (东)"
-                terrain.aspect >= 112.5 && terrain.aspect < 157.5 -> "SE (东南)"
-                terrain.aspect >= 157.5 && terrain.aspect < 202.5 -> "S (南)"
-                terrain.aspect >= 202.5 && terrain.aspect < 247.5 -> "SW (西南)"
-                terrain.aspect >= 247.5 && terrain.aspect < 292.5 -> "W (西)"
-                else -> "NW (西北)"
+                terrain.aspectGISFinal == null || terrain.aspectGISFinal < 0.0 -> "N/A"
+                terrain.aspectGISFinal < 22.5 || terrain.aspectGISFinal >= 337.5 -> "N (北)"
+                terrain.aspectGISFinal >= 22.5 && terrain.aspectGISFinal < 67.5 -> "NE (东北)"
+                terrain.aspectGISFinal >= 67.5 && terrain.aspectGISFinal < 112.5 -> "E (东)"
+                terrain.aspectGISFinal >= 112.5 && terrain.aspectGISFinal < 157.5 -> "SE (东南)"
+                terrain.aspectGISFinal >= 157.5 && terrain.aspectGISFinal < 202.5 -> "S (南)"
+                terrain.aspectGISFinal >= 202.5 && terrain.aspectGISFinal < 247.5 -> "SW (西南)"
+                terrain.aspectGISFinal >= 247.5 && terrain.aspectGISFinal < 292.5 -> "W (西)"
+                terrain.aspectGISFinal >= 292.5 && terrain.aspectGISFinal < 337.5 -> "NW (西北)"
+                else -> "N/A"
             }
             demDiagnosticSection += "当前点：\n" +
                     "  Lat: ${terrain.lat ?: 0.0}°\n" +
@@ -1938,7 +1951,7 @@ ${finalStyleJsonString ?: "None"}
                     "AspectRawMath=${if (terrain.aspectRawMath != null) "%.1f".format(terrain.aspectRawMath) else "N/A"}°\n\n" +
                     "AspectGISFinal=${if (terrain.aspectGISFinal != null) "%.1f".format(terrain.aspectGISFinal) else "N/A"}°\n\n" +
                     "坡度: Slope=${if (terrain.slope != null) "%.1f".format(terrain.slope) else "N/A"}°\n" +
-                    "坡向: Aspect=${if (terrain.aspect != null) "%.1f".format(terrain.aspect) else "N/A"}° ($aspectDir)\n\n"
+                    "坡向: Aspect=${if (terrain.aspectGISFinal != null && terrain.aspectGISFinal >= 0.0) "%.1f".format(terrain.aspectGISFinal) else "N/A"}° ($aspectDir)\n\n"
         } else {
             demDiagnosticSection += "当前无活跃的测地学分析点。\n\n"
         }

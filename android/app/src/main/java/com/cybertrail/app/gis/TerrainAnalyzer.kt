@@ -70,12 +70,6 @@ class TerrainAnalyzer(
             val riseRun = Math.sqrt(dzDx * dzDx + dzDy * dzDy)
             val slopeDeg = Math.toDegrees(Math.atan(riseRun))
 
-            var aspectRad = Math.atan2(dzDy, -dzDx)
-            if (aspectRad < 0.0) {
-                aspectRad += 2.0 * Math.PI
-            }
-            val aspectDeg = Math.toDegrees(aspectRad)
-
             val downSlopeX = -dzDx
             val downSlopeY = -dzDy
             val mathAngleDeg = Math.toDegrees(Math.atan2(downSlopeY, downSlopeX))
@@ -88,10 +82,20 @@ class TerrainAnalyzer(
             }
             val aspectGISFinal = if (dzDx == 0.0 && dzDy == 0.0) -1.0 else gisAspect
 
+            // Save old math aspect for diagnostics
+            var rawAspectRad = Math.atan2(dzDy, -dzDx)
+            if (rawAspectRad < 0.0) {
+                rawAspectRad += 2.0 * Math.PI
+            }
+            val aspectRawMathDeg = Math.toDegrees(rawAspectRad)
+
+            // The main aspect property should point to the correct GIS-based final aspect (null if flat)
+            val aspectDeg = if (dzDx == 0.0 && dzDy == 0.0) null else gisAspect
+
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             return AnalysisResult(
                 elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy,
-                aspectRawMath = aspectDeg,
+                aspectRawMath = aspectRawMathDeg,
                 aspectDownSlopeVectorX = downSlopeX,
                 aspectDownSlopeVectorY = downSlopeY,
                 aspectGISFinal = aspectGISFinal
