@@ -1931,6 +1931,12 @@ ${finalStyleJsonString ?: "None"}
                     "西侧高程: West=${if (terrain.hW != null) "%.1f".format(terrain.hW) else "N/A"}m\n\n" +
                     "dzDx=${if (terrain.dzDx != null) "%.5f".format(terrain.dzDx) else "N/A"}\n" +
                     "dzDy=${if (terrain.dzDy != null) "%.5f".format(terrain.dzDy) else "N/A"}\n\n" +
+                    "DownSlopeX=${if (terrain.aspectDownSlopeVectorX != null) "%.5f".format(terrain.aspectDownSlopeVectorX) else "N/A"}\n" +
+                    "DownSlopeY=${if (terrain.aspectDownSlopeVectorY != null) "%.5f".format(terrain.aspectDownSlopeVectorY) else "N/A"}\n" +
+                    "AspectDownSlopeVectorX=${if (terrain.aspectDownSlopeVectorX != null) "%.5f".format(terrain.aspectDownSlopeVectorX) else "N/A"}\n" +
+                    "AspectDownSlopeVectorY=${if (terrain.aspectDownSlopeVectorY != null) "%.5f".format(terrain.aspectDownSlopeVectorY) else "N/A"}\n\n" +
+                    "AspectRawMath=${if (terrain.aspectRawMath != null) "%.1f".format(terrain.aspectRawMath) else "N/A"}°\n\n" +
+                    "AspectGISFinal=${if (terrain.aspectGISFinal != null) "%.1f".format(terrain.aspectGISFinal) else "N/A"}°\n\n" +
                     "坡度: Slope=${if (terrain.slope != null) "%.1f".format(terrain.slope) else "N/A"}°\n" +
                     "坡向: Aspect=${if (terrain.aspect != null) "%.1f".format(terrain.aspect) else "N/A"}° ($aspectDir)\n\n"
         } else {

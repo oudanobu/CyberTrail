@@ -21,7 +21,11 @@ class TerrainAnalyzer(
         val hE: Double? = null,
         val hW: Double? = null,
         val dzDx: Double? = null,
-        val dzDy: Double? = null
+        val dzDy: Double? = null,
+        val aspectRawMath: Double? = null,
+        val aspectDownSlopeVectorX: Double? = null,
+        val aspectDownSlopeVectorY: Double? = null,
+        val aspectGISFinal: Double? = null
     )
 
     fun analyzeLocation(lat: Double, lon: Double): AnalysisResult {
@@ -72,8 +76,26 @@ class TerrainAnalyzer(
             }
             val aspectDeg = Math.toDegrees(aspectRad)
 
+            val downSlopeX = -dzDx
+            val downSlopeY = -dzDy
+            val mathAngleDeg = Math.toDegrees(Math.atan2(downSlopeY, downSlopeX))
+            var gisAspect = 90.0 - mathAngleDeg
+            if (gisAspect < 0.0) {
+                gisAspect += 360.0
+            }
+            if (gisAspect >= 360.0) {
+                gisAspect -= 360.0
+            }
+            val aspectGISFinal = if (dzDx == 0.0 && dzDy == 0.0) -1.0 else gisAspect
+
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
-            return AnalysisResult(elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy)
+            return AnalysisResult(
+                elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy,
+                aspectRawMath = aspectDeg,
+                aspectDownSlopeVectorX = downSlopeX,
+                aspectDownSlopeVectorY = downSlopeY,
+                aspectGISFinal = aspectGISFinal
+            )
         } catch (e: Exception) {
             return AnalysisResult(elevation, null, null, source, lat, lon)
         }
