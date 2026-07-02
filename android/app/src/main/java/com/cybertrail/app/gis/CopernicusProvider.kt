@@ -51,6 +51,12 @@ class CopernicusProvider(private val demDirectory: File) : DEMProvider {
         return null
     }
 
+    fun getReaders(): List<GeoTiffReader> {
+        return synchronized(this) {
+            ArrayList(readers)
+        }
+    }
+
     fun close() {
         synchronized(this) {
             for (reader in readers) {

@@ -13,11 +13,19 @@ class TerrainAnalyzer(
         val elevation: Double?,
         val slope: Double?,
         val aspect: Double?,
-        val source: String
+        val source: String,
+        val lat: Double? = null,
+        val lon: Double? = null,
+        val hN: Double? = null,
+        val hS: Double? = null,
+        val hE: Double? = null,
+        val hW: Double? = null,
+        val dzDx: Double? = null,
+        val dzDy: Double? = null
     )
 
     fun analyzeLocation(lat: Double, lon: Double): AnalysisResult {
-        val elevation = demSystem.getElevation(lat, lon) ?: return AnalysisResult(null, null, null, "DEM未加载")
+        val elevation = demSystem.getElevation(lat, lon) ?: return AnalysisResult(null, null, null, "DEM未加载", lat, lon)
         
         // Determine if we have real offline DEM files to customize the label
         val hasOffline = demLoader.hasOfflineDemFiles()
@@ -46,10 +54,10 @@ class TerrainAnalyzer(
             val dLat = 0.0001
             val dLon = 0.0001
             
-            val hN = demSystem.getElevation(lat + dLat, lon) ?: return AnalysisResult(elevation, null, null, source)
-            val hS = demSystem.getElevation(lat - dLat, lon) ?: return AnalysisResult(elevation, null, null, source)
-            val hE = demSystem.getElevation(lat, lon + dLon) ?: return AnalysisResult(elevation, null, null, source)
-            val hW = demSystem.getElevation(lat, lon - dLon) ?: return AnalysisResult(elevation, null, null, source)
+            val hN = demSystem.getElevation(lat + dLat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
+            val hS = demSystem.getElevation(lat - dLat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
+            val hE = demSystem.getElevation(lat, lon + dLon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
+            val hW = demSystem.getElevation(lat, lon - dLon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
 
             val cellSideM = 11.1 // approx meters per 0.0001 degree
             val dzDx = (hE - hW) / (2.0 * cellSideM)
@@ -65,9 +73,9 @@ class TerrainAnalyzer(
             val aspectDeg = Math.toDegrees(aspectRad)
 
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
-            return AnalysisResult(elevation, slopeDeg, aspectDeg, source)
+            return AnalysisResult(elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy)
         } catch (e: Exception) {
-            return AnalysisResult(elevation, null, null, source)
+            return AnalysisResult(elevation, null, null, source, lat, lon)
         }
     }
 

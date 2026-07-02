@@ -59,6 +59,9 @@ class DEMLoader(private val context: Context) {
         return files != null && files.isNotEmpty()
     }
 
+    fun getCopernicusReaders(): List<GeoTiffReader> = copernicusProvider.getReaders()
+    fun getAlosReaders(): List<GeoTiffReader> = alosProvider.getReaders()
+
     fun getElevation(lat: Double, lon: Double): Double? {
         // Try SRTM first (highest priority)
         val srtmElevation = srtmProvider.getElevation(lat, lon)

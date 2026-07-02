@@ -49,6 +49,36 @@ class GeoTiffReader(private val file: File) : Closeable {
         }
     }
 
+    fun getMetadata(): String {
+        val crsName = if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+            "Geographic (WGS84)"
+        } else if (Math.abs(tiepointX) > 2000000.0 && Math.abs(tiepointX) < 21000000.0) {
+            "Web Mercator"
+        } else {
+            "Projected (UTM or local Grid)"
+        }
+        val epsgStr = if (crsName == "Geographic (WGS84)") "EPSG:4326" else if (crsName == "Web Mercator") "EPSG:3857" else "EPSG:Unknown"
+        
+        val minX = tiepointX
+        val maxY = tiepointY
+        val maxX = tiepointX + (imageWidth * scaleX)
+        val minY = tiepointY - (imageHeight * scaleY)
+
+        return """
+            CRS: $crsName
+            EPSG: $epsgStr
+            
+            Width: $imageWidth
+            Height: $imageHeight
+            
+            PixelScale: $scaleX, $scaleY
+            
+            TiePoint: GeoX=$tiepointX, GeoY=$tiepointY
+            
+            BoundingBox: MinX=$minX, MinY=$minY, MaxX=$maxX, MaxY=$maxY
+        """.trimIndent()
+    }
+
     @Synchronized
     fun getElevation(lat: Double, lon: Double): Double? {
         if (!initialized || raf == null) return null

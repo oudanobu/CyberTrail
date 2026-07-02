@@ -76,6 +76,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
     private lateinit var mapView: MapView
     private var mapboxMap: MapboxMap? = null
     private lateinit var demSystem: DEMSystem
+    private var lastTerrainAnalysis: com.cybertrail.app.gis.TerrainAnalyzer.AnalysisResult? = null
 
     // HUD controls
     private lateinit var hudElevation: TextView
@@ -1178,6 +1179,8 @@ ${finalStyleJsonString ?: "None"}
 
         demSystem.terrainAnalyzer.analyzeLocationAsync(lat, lon) { result ->
             runOnUiThread {
+                lastTerrainAnalysis = result
+                updateDiagnosticHud()
                 if (result != null && result.elevation != null) {
                     val sourceStr = if (result.source.startsWith("DEM")) result.source else "DEM"
                     hudElevation.text = "海拔: %.1f m (数据来源: %s)".format(result.elevation, sourceStr)
@@ -1895,13 +1898,63 @@ ${finalStyleJsonString ?: "None"}
         val elevationSource = if (hasDem) "DEM" else if (lastGpsAltitude != null) "GPS" else "Fallback"
         val slopeSource = if (hasDem) "DEM" else "Unavailable"
 
-
-        val demDiagnosticSection = "--- OFFLINE GEOPROCESSING DIAGNOSTICS ---\n" +
+        var demDiagnosticSection = "--- OFFLINE GEOPROCESSING DIAGNOSTICS ---\n" +
                 "DEMLoaded=$hasDem\n" +
                 "DEMFilePath=$demFilePath\n" +
                 "ElevationSource=$elevationSource\n" +
-                "SlopeSource=$slopeSource\n" +
-                "========================================\n\n"
+                "SlopeSource=$slopeSource\n\n"
+
+        // Live Grid Diagnostics
+        demDiagnosticSection += "========================================\n" +
+                "[DEM 调试面板 / DEM Diagnostic Grid]\n" +
+                "========================================\n"
+        val terrain = lastTerrainAnalysis
+        if (terrain != null && terrain.elevation != null) {
+            val aspectDir = when {
+                terrain.aspect == null -> "N/A"
+                terrain.aspect < 22.5 || terrain.aspect >= 337.5 -> "N (北)"
+                terrain.aspect >= 22.5 && terrain.aspect < 67.5 -> "NE (东北)"
+                terrain.aspect >= 67.5 && terrain.aspect < 112.5 -> "E (东)"
+                terrain.aspect >= 112.5 && terrain.aspect < 157.5 -> "SE (东南)"
+                terrain.aspect >= 157.5 && terrain.aspect < 202.5 -> "S (南)"
+                terrain.aspect >= 202.5 && terrain.aspect < 247.5 -> "SW (西南)"
+                terrain.aspect >= 247.5 && terrain.aspect < 292.5 -> "W (西)"
+                else -> "NW (西北)"
+            }
+            demDiagnosticSection += "当前点：\n" +
+                    "  Lat: ${terrain.lat ?: 0.0}°\n" +
+                    "  Lon: ${terrain.lon ?: 0.0}°\n\n" +
+                    "中心高程: Center=${"%.1f".format(terrain.elevation)}m\n" +
+                    "北侧高程: North=${if (terrain.hN != null) "%.1f".format(terrain.hN) else "N/A"}m\n" +
+                    "南侧高程: South=${if (terrain.hS != null) "%.1f".format(terrain.hS) else "N/A"}m\n" +
+                    "东侧高程: East=${if (terrain.hE != null) "%.1f".format(terrain.hE) else "N/A"}m\n" +
+                    "西侧高程: West=${if (terrain.hW != null) "%.1f".format(terrain.hW) else "N/A"}m\n\n" +
+                    "dzDx=${if (terrain.dzDx != null) "%.5f".format(terrain.dzDx) else "N/A"}\n" +
+                    "dzDy=${if (terrain.dzDy != null) "%.5f".format(terrain.dzDy) else "N/A"}\n\n" +
+                    "坡度: Slope=${if (terrain.slope != null) "%.1f".format(terrain.slope) else "N/A"}°\n" +
+                    "坡向: Aspect=${if (terrain.aspect != null) "%.1f".format(terrain.aspect) else "N/A"}° ($aspectDir)\n\n"
+        } else {
+            demDiagnosticSection += "当前无活跃的测地学分析点。\n\n"
+        }
+
+        // Reader Metadata Section
+        demDiagnosticSection += "========================================\n" +
+                "[GeoTIFF 元数据 / GeoTIFF Reader Metadata]\n" +
+                "========================================\n"
+        val copReaders = demSystem.demLoader.getCopernicusReaders()
+        val alosReaders = demSystem.demLoader.getAlosReaders()
+        
+        if (copReaders.isEmpty() && alosReaders.isEmpty()) {
+            demDiagnosticSection += "无加载的 GeoTIFF 读取器实例。\n\n"
+        } else {
+            for ((idx, r) in copReaders.withIndex()) {
+                demDiagnosticSection += "读取器 [Copernicus #${idx + 1}]:\n" + r.getMetadata() + "\n\n"
+            }
+            for ((idx, r) in alosReaders.withIndex()) {
+                demDiagnosticSection += "读取器 [ALOS #${idx + 1}]:\n" + r.getMetadata() + "\n\n"
+            }
+        }
+        demDiagnosticSection += "========================================\n\n"
 
         hudDiagnosticCounters.text = scanSection +
                 demDiagnosticSection +
