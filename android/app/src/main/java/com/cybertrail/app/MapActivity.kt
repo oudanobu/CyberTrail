@@ -1971,10 +1971,10 @@ ${finalStyleJsonString ?: "None"}
                         "SouthElevation: ${"%.1f".format(diag.southElevation)}m\n" +
                         "EastElevation: ${"%.1f".format(diag.eastElevation)}m\n" +
                         "WestElevation: ${"%.1f".format(diag.westElevation)}m\n\n" +
-                        "NorthIsSamePixelAsCenter: ${diag.northIsSamePixelAsCenter}\n" +
-                        "SouthIsSamePixelAsCenter: ${diag.southIsSamePixelAsCenter}\n" +
-                        "EastIsSamePixelAsCenter: ${diag.eastIsSamePixelAsCenter}\n" +
-                        "WestIsSamePixelAsCenter: ${diag.westIsSamePixelAsCenter}\n\n" +
+                        "NorthSamePixelAsCenter: ${diag.northIsSamePixelAsCenter}\n" +
+                        "SouthSamePixelAsCenter: ${diag.southIsSamePixelAsCenter}\n" +
+                        "EastSamePixelAsCenter: ${diag.eastIsSamePixelAsCenter}\n" +
+                        "WestSamePixelAsCenter: ${diag.westIsSamePixelAsCenter}\n\n" +
                         "DEMResolutionMeters: ${"%.2f".format(diag.demResolutionMeters)}m\n" +
                         "NeighborOffsetMeters: ${"%.2f".format(diag.neighborOffsetMeters)}m\n\n"
                 

@@ -150,6 +150,29 @@ class TerrainAnalyzer(
             )
 
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
+            Log.d("DEM_VALIDATION", """
+                [DEM Real-time Sampling Diagnostics]
+                Lat: $lat, Lon: $lon
+                CenterPixelX: ${centerCoords.first}
+                CenterPixelY: ${centerCoords.second}
+                NorthPixelX: ${northCoords.first}
+                NorthPixelY: ${northCoords.second}
+                SouthPixelX: ${southCoords.first}
+                SouthPixelY: ${southCoords.second}
+                EastPixelX: ${eastCoords.first}
+                EastPixelY: ${eastCoords.second}
+                WestPixelX: ${westCoords.first}
+                WestPixelY: ${westCoords.second}
+                CenterElevation: $elevation
+                NorthElevation: $hN
+                SouthElevation: $hS
+                EastElevation: $hE
+                WestElevation: $hW
+                NorthSamePixelAsCenter: ${centerCoords.first == northCoords.first && centerCoords.second == northCoords.second}
+                SouthSamePixelAsCenter: ${centerCoords.first == southCoords.first && centerCoords.second == southCoords.second}
+                EastSamePixelAsCenter: ${centerCoords.first == eastCoords.first && centerCoords.second == eastCoords.second}
+                WestSamePixelAsCenter: ${centerCoords.first == westCoords.first && centerCoords.second == westCoords.second}
+            """.trimIndent())
             return AnalysisResult(
                 elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy,
                 aspectRawMath = aspectRawMathDeg,
