@@ -73,6 +73,48 @@ class SRTMProvider(private val demDirectory: File) : DEMProvider {
         }
     }
 
+    fun getPixelCoords(lat: Double, lon: Double): Pair<Double, Double>? {
+        val latFloor = Math.floor(lat).toInt()
+        val lonFloor = Math.floor(lon).toInt()
+
+        val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+        val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+        val expectedName = "${latPart}${lonPart}.hgt"
+        val file = findFileCaseInsensitive(demDirectory, expectedName) ?: return null
+
+        val fileLength = file.length()
+        val size = when (fileLength) {
+            2884802L -> 1201
+            25934402L -> 3601
+            else -> return null
+        }
+
+        val dLat = lat - latFloor
+        val dLon = lon - lonFloor
+
+        val rowFloat = (1.0 - dLat) * (size - 1)
+        val colFloat = dLon * (size - 1)
+        return Pair(colFloat, rowFloat)
+    }
+
+    fun getResolutionMeters(lat: Double, lon: Double): Double? {
+        val latFloor = Math.floor(lat).toInt()
+        val lonFloor = Math.floor(lon).toInt()
+
+        val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+        val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+        val expectedName = "${latPart}${lonPart}.hgt"
+        val file = findFileCaseInsensitive(demDirectory, expectedName) ?: return null
+
+        val fileLength = file.length()
+        val size = when (fileLength) {
+            2884802L -> 1201
+            25934402L -> 3601
+            else -> return null
+        }
+        return if (size == 3601) 30.0 else 90.0
+    }
+
     private fun findFileCaseInsensitive(dir: File, name: String): File? {
         if (!dir.exists()) return null
         val files = dir.listFiles() ?: return null

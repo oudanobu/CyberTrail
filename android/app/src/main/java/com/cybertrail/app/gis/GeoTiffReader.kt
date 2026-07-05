@@ -147,7 +147,14 @@ class GeoTiffReader(private val file: File) : Closeable {
         }
     }
 
-    private fun getPixelCoords(lat: Double, lon: Double): Pair<Double, Double> {
+    fun getResolutionMeters(): Double {
+        if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+            return scaleX * 111120.0
+        }
+        return scaleX
+    }
+
+    fun getPixelCoords(lat: Double, lon: Double): Pair<Double, Double> {
         // EPSG:4326 Geographic coordinates
         if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
             val px = (lon - tiepointX) / scaleX

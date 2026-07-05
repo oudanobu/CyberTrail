@@ -1952,6 +1952,36 @@ ${finalStyleJsonString ?: "None"}
                     "AspectGISFinal=${if (terrain.aspectGISFinal != null) "%.1f".format(terrain.aspectGISFinal) else "N/A"}°\n\n" +
                     "坡度: Slope=${if (terrain.slope != null) "%.1f".format(terrain.slope) else "N/A"}°\n" +
                     "坡向: Aspect=${if (terrain.aspectGISFinal != null && terrain.aspectGISFinal >= 0.0) "%.1f".format(terrain.aspectGISFinal) else "N/A"}° ($aspectDir)\n\n"
+            
+            val diag = terrain.samplingDiagnostic
+            if (diag != null) {
+                demDiagnosticSection += "=== DEMSamplingDiagnostic ===\n" +
+                        "CenterPixelX: ${diag.centerPixelX}\n" +
+                        "CenterPixelY: ${diag.centerPixelY}\n" +
+                        "NorthPixelX: ${diag.northPixelX}\n" +
+                        "NorthPixelY: ${diag.northPixelY}\n" +
+                        "SouthPixelX: ${diag.southPixelX}\n" +
+                        "SouthPixelY: ${diag.southPixelY}\n" +
+                        "EastPixelX: ${diag.eastPixelX}\n" +
+                        "EastPixelY: ${diag.eastPixelY}\n" +
+                        "WestPixelX: ${diag.westPixelX}\n" +
+                        "WestPixelY: ${diag.westPixelY}\n\n" +
+                        "CenterElevation: ${"%.1f".format(diag.centerElevation)}m\n" +
+                        "NorthElevation: ${"%.1f".format(diag.northElevation)}m\n" +
+                        "SouthElevation: ${"%.1f".format(diag.southElevation)}m\n" +
+                        "EastElevation: ${"%.1f".format(diag.eastElevation)}m\n" +
+                        "WestElevation: ${"%.1f".format(diag.westElevation)}m\n\n" +
+                        "NorthIsSamePixelAsCenter: ${diag.northIsSamePixelAsCenter}\n" +
+                        "SouthIsSamePixelAsCenter: ${diag.southIsSamePixelAsCenter}\n" +
+                        "EastIsSamePixelAsCenter: ${diag.eastIsSamePixelAsCenter}\n" +
+                        "WestIsSamePixelAsCenter: ${diag.westIsSamePixelAsCenter}\n\n" +
+                        "DEMResolutionMeters: ${"%.2f".format(diag.demResolutionMeters)}m\n" +
+                        "NeighborOffsetMeters: ${"%.2f".format(diag.neighborOffsetMeters)}m\n\n"
+                
+                val allDifferent = !diag.northIsSamePixelAsCenter && !diag.southIsSamePixelAsCenter && !diag.eastIsSamePixelAsCenter && !diag.westIsSamePixelAsCenter
+                demDiagnosticSection += "邻域采样像元重合判定 / Cell Overlap Confirmation:\n" +
+                        "  [North/South/East/West落入不同像元]: $allDifferent\n\n"
+            }
         } else {
             demDiagnosticSection += "当前无活跃的测地学分析点。\n\n"
         }

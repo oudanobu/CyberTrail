@@ -9,6 +9,30 @@ class TerrainAnalyzer(
     private val demSystem: DEMSystem
 ) {
 
+    data class DEMSamplingDiagnostic(
+        val centerPixelX: Int,
+        val centerPixelY: Int,
+        val northPixelX: Int,
+        val northPixelY: Int,
+        val southPixelX: Int,
+        val southPixelY: Int,
+        val eastPixelX: Int,
+        val eastPixelY: Int,
+        val westPixelX: Int,
+        val westPixelY: Int,
+        val centerElevation: Double,
+        val northElevation: Double,
+        val southElevation: Double,
+        val eastElevation: Double,
+        val westElevation: Double,
+        val northIsSamePixelAsCenter: Boolean,
+        val southIsSamePixelAsCenter: Boolean,
+        val eastIsSamePixelAsCenter: Boolean,
+        val westIsSamePixelAsCenter: Boolean,
+        val demResolutionMeters: Double,
+        val neighborOffsetMeters: Double
+    )
+
     data class AnalysisResult(
         val elevation: Double?,
         val slope: Double?,
@@ -25,7 +49,8 @@ class TerrainAnalyzer(
         val aspectRawMath: Double? = null,
         val aspectDownSlopeVectorX: Double? = null,
         val aspectDownSlopeVectorY: Double? = null,
-        val aspectGISFinal: Double? = null
+        val aspectGISFinal: Double? = null,
+        val samplingDiagnostic: DEMSamplingDiagnostic? = null
     )
 
     fun analyzeLocation(lat: Double, lon: Double): AnalysisResult {
@@ -92,19 +117,94 @@ class TerrainAnalyzer(
             // The main aspect property should point to the correct GIS-based final aspect (null if flat)
             val aspectDeg = if (dzDx == 0.0 && dzDy == 0.0) null else gisAspect
 
+            val centerCoords = getPixelCoords(lat, lon) ?: Pair(0, 0)
+            val northCoords = getPixelCoords(lat + dLat, lon) ?: Pair(0, 0)
+            val southCoords = getPixelCoords(lat - dLat, lon) ?: Pair(0, 0)
+            val eastCoords = getPixelCoords(lat, lon + dLon) ?: Pair(0, 0)
+            val westCoords = getPixelCoords(lat, lon - dLon) ?: Pair(0, 0)
+
+            val demRes = getDEMResolutionMeters(lat, lon) ?: 30.0
+
+            val diagnostic = DEMSamplingDiagnostic(
+                centerPixelX = centerCoords.first,
+                centerPixelY = centerCoords.second,
+                northPixelX = northCoords.first,
+                northPixelY = northCoords.second,
+                southPixelX = southCoords.first,
+                southPixelY = southCoords.second,
+                eastPixelX = eastCoords.first,
+                eastPixelY = eastCoords.second,
+                westPixelX = westCoords.first,
+                westPixelY = westCoords.second,
+                centerElevation = elevation,
+                northElevation = hN,
+                southElevation = hS,
+                eastElevation = hE,
+                westElevation = hW,
+                northIsSamePixelAsCenter = (centerCoords.first == northCoords.first && centerCoords.second == northCoords.second),
+                southIsSamePixelAsCenter = (centerCoords.first == southCoords.first && centerCoords.second == southCoords.second),
+                eastIsSamePixelAsCenter = (centerCoords.first == eastCoords.first && centerCoords.second == eastCoords.second),
+                westIsSamePixelAsCenter = (centerCoords.first == westCoords.first && centerCoords.second == westCoords.second),
+                demResolutionMeters = demRes,
+                neighborOffsetMeters = cellSideM
+            )
+
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             return AnalysisResult(
                 elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy,
                 aspectRawMath = aspectRawMathDeg,
                 aspectDownSlopeVectorX = downSlopeX,
                 aspectDownSlopeVectorY = downSlopeY,
-                aspectGISFinal = aspectGISFinal
+                aspectGISFinal = aspectGISFinal,
+                samplingDiagnostic = diagnostic
             )
         } catch (e: Exception) {
             return AnalysisResult(elevation, null, null, source, lat, lon)
         }
     }
 
+
+    fun getPixelCoords(lat: Double, lon: Double): Pair<Int, Int>? {
+        val srtmCoords = demLoader.srtmProvider.getPixelCoords(lat, lon)
+        if (srtmCoords != null) {
+            return Pair(srtmCoords.first.toInt(), srtmCoords.second.toInt())
+        }
+        for (reader in demLoader.getCopernicusReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                val coords = reader.getPixelCoords(lat, lon)
+                return Pair(coords.first.toInt(), coords.second.toInt())
+            }
+        }
+        for (reader in demLoader.getAlosReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                val coords = reader.getPixelCoords(lat, lon)
+                return Pair(coords.first.toInt(), coords.second.toInt())
+            }
+        }
+        return null
+    }
+
+    fun getDEMResolutionMeters(lat: Double, lon: Double): Double? {
+        val srtmRes = demLoader.srtmProvider.getResolutionMeters(lat, lon)
+        if (srtmRes != null) {
+            return srtmRes
+        }
+        for (reader in demLoader.getCopernicusReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getResolutionMeters()
+            }
+        }
+        for (reader in demLoader.getAlosReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getResolutionMeters()
+            }
+        }
+        return null
+    }
 
     fun analyzeLocationAsync(lat: Double, lon: Double, callback: (AnalysisResult?) -> Unit) {
         Thread {
