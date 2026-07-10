@@ -62,6 +62,46 @@ class DEMLoader(private val context: Context) {
     fun getCopernicusReaders(): List<GeoTiffReader> = copernicusProvider.getReaders()
     fun getAlosReaders(): List<GeoTiffReader> = alosProvider.getReaders()
 
+    fun getPixelCoords(lat: Double, lon: Double): Pair<Double, Double>? {
+        val srtmCoords = srtmProvider.getPixelCoords(lat, lon)
+        if (srtmCoords != null) {
+            return srtmCoords
+        }
+        for (reader in copernicusProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getPixelCoords(lat, lon)
+            }
+        }
+        for (reader in alosProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getPixelCoords(lat, lon)
+            }
+        }
+        return null
+    }
+
+    fun getResolutionMeters(lat: Double, lon: Double): Double? {
+        val srtmRes = srtmProvider.getResolutionMeters(lat, lon)
+        if (srtmRes != null) {
+            return srtmRes
+        }
+        for (reader in copernicusProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getResolutionMeters()
+            }
+        }
+        for (reader in alosProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return reader.getResolutionMeters()
+            }
+        }
+        return null
+    }
+
     fun getElevation(lat: Double, lon: Double): Double? {
         // Try SRTM first (highest priority)
         val srtmElevation = srtmProvider.getElevation(lat, lon)

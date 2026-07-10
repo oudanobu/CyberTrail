@@ -188,45 +188,12 @@ class TerrainAnalyzer(
 
 
     fun getPixelCoords(lat: Double, lon: Double): Pair<Int, Int>? {
-        val srtmCoords = demLoader.srtmProvider.getPixelCoords(lat, lon)
-        if (srtmCoords != null) {
-            return Pair(srtmCoords.first.toInt(), srtmCoords.second.toInt())
-        }
-        for (reader in demLoader.getCopernicusReaders()) {
-            val elev = reader.getElevation(lat, lon)
-            if (elev != null) {
-                val coords = reader.getPixelCoords(lat, lon)
-                return Pair(coords.first.toInt(), coords.second.toInt())
-            }
-        }
-        for (reader in demLoader.getAlosReaders()) {
-            val elev = reader.getElevation(lat, lon)
-            if (elev != null) {
-                val coords = reader.getPixelCoords(lat, lon)
-                return Pair(coords.first.toInt(), coords.second.toInt())
-            }
-        }
-        return null
+        val coords = demLoader.getPixelCoords(lat, lon) ?: return null
+        return Pair(coords.first.toInt(), coords.second.toInt())
     }
 
     fun getDEMResolutionMeters(lat: Double, lon: Double): Double? {
-        val srtmRes = demLoader.srtmProvider.getResolutionMeters(lat, lon)
-        if (srtmRes != null) {
-            return srtmRes
-        }
-        for (reader in demLoader.getCopernicusReaders()) {
-            val elev = reader.getElevation(lat, lon)
-            if (elev != null) {
-                return reader.getResolutionMeters()
-            }
-        }
-        for (reader in demLoader.getAlosReaders()) {
-            val elev = reader.getElevation(lat, lon)
-            if (elev != null) {
-                return reader.getResolutionMeters()
-            }
-        }
-        return null
+        return demLoader.getResolutionMeters(lat, lon)
     }
 
     fun analyzeLocationAsync(lat: Double, lon: Double, callback: (AnalysisResult?) -> Unit) {
