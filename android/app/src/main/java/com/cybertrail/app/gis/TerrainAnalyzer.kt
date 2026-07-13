@@ -80,17 +80,24 @@ class TerrainAnalyzer(
         }
 
         try {
-            val dLat = 0.0001
-            val dLon = 0.0001
-            
-            val hN = demSystem.getElevation(lat + dLat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
-            val hS = demSystem.getElevation(lat - dLat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
-            val hE = demSystem.getElevation(lat, lon + dLon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
-            val hW = demSystem.getElevation(lat, lon - dLon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
+            val activeDEM = demLoader.getActiveDEMInfo(lat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
+            val centerCoords = demLoader.getPixelCoords(lat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
 
-            val cellSideM = 11.1 // approx meters per 0.0001 degree
-            val dzDx = (hE - hW) / (2.0 * cellSideM)
-            val dzDy = (hN - hS) / (2.0 * cellSideM)
+            val cx = centerCoords.first.toInt()
+            val cy = centerCoords.second.toInt()
+
+            val provider = activeDEM.provider
+
+            val hN = demLoader.getElevationByPixel(provider, cx, cy - 1, lat, lon) ?: elevation
+            val hS = demLoader.getElevationByPixel(provider, cx, cy + 1, lat, lon) ?: elevation
+            val hE = demLoader.getElevationByPixel(provider, cx + 1, cy, lat, lon) ?: elevation
+            val hW = demLoader.getElevationByPixel(provider, cx - 1, cy, lat, lon) ?: elevation
+
+            val dx = activeDEM.pixelSizeXMeters
+            val dy = activeDEM.pixelSizeYMeters
+
+            val dzDx = (hE - hW) / (2.0 * dx)
+            val dzDy = (hN - hS) / (2.0 * dy)
 
             val riseRun = Math.sqrt(dzDx * dzDx + dzDy * dzDy)
             val slopeDeg = Math.toDegrees(Math.atan(riseRun))
@@ -117,62 +124,57 @@ class TerrainAnalyzer(
             // The main aspect property should point to the correct GIS-based final aspect (null if flat)
             val aspectDeg = if (dzDx == 0.0 && dzDy == 0.0) null else gisAspect
 
-            val centerCoords = getPixelCoords(lat, lon) ?: Pair(0, 0)
-            val northCoords = getPixelCoords(lat + dLat, lon) ?: Pair(0, 0)
-            val southCoords = getPixelCoords(lat - dLat, lon) ?: Pair(0, 0)
-            val eastCoords = getPixelCoords(lat, lon + dLon) ?: Pair(0, 0)
-            val westCoords = getPixelCoords(lat, lon - dLon) ?: Pair(0, 0)
-
-            val demRes = getDEMResolutionMeters(lat, lon) ?: 30.0
+            val demRes = getDEMResolutionMeters(lat, lon) ?: dx
 
             val diagnostic = DEMSamplingDiagnostic(
-                centerPixelX = centerCoords.first,
-                centerPixelY = centerCoords.second,
-                northPixelX = northCoords.first,
-                northPixelY = northCoords.second,
-                southPixelX = southCoords.first,
-                southPixelY = southCoords.second,
-                eastPixelX = eastCoords.first,
-                eastPixelY = eastCoords.second,
-                westPixelX = westCoords.first,
-                westPixelY = westCoords.second,
+                centerPixelX = cx,
+                centerPixelY = cy,
+                northPixelX = cx,
+                northPixelY = cy - 1,
+                southPixelX = cx,
+                southPixelY = cy + 1,
+                eastPixelX = cx + 1,
+                eastPixelY = cy,
+                westPixelX = cx - 1,
+                westPixelY = cy,
                 centerElevation = elevation,
                 northElevation = hN,
                 southElevation = hS,
                 eastElevation = hE,
                 westElevation = hW,
-                northIsSamePixelAsCenter = (centerCoords.first == northCoords.first && centerCoords.second == northCoords.second),
-                southIsSamePixelAsCenter = (centerCoords.first == southCoords.first && centerCoords.second == southCoords.second),
-                eastIsSamePixelAsCenter = (centerCoords.first == eastCoords.first && centerCoords.second == eastCoords.second),
-                westIsSamePixelAsCenter = (centerCoords.first == westCoords.first && centerCoords.second == westCoords.second),
+                northIsSamePixelAsCenter = false,
+                southIsSamePixelAsCenter = false,
+                eastIsSamePixelAsCenter = false,
+                westIsSamePixelAsCenter = false,
                 demResolutionMeters = demRes,
-                neighborOffsetMeters = cellSideM
+                neighborOffsetMeters = dx
             )
 
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             Log.d("DEM_VALIDATION", """
                 [DEM Real-time Sampling Diagnostics]
                 Lat: $lat, Lon: $lon
-                CenterPixelX: ${centerCoords.first}
-                CenterPixelY: ${centerCoords.second}
-                NorthPixelX: ${northCoords.first}
-                NorthPixelY: ${northCoords.second}
-                SouthPixelX: ${southCoords.first}
-                SouthPixelY: ${southCoords.second}
-                EastPixelX: ${eastCoords.first}
-                EastPixelY: ${eastCoords.second}
-                WestPixelX: ${westCoords.first}
-                WestPixelY: ${westCoords.second}
+                CenterPixelX: $cx
+                CenterPixelY: $cy
+                NorthPixelX: $cx
+                NorthPixelY: ${cy - 1}
+                SouthPixelX: $cx
+                SouthPixelY: ${cy + 1}
+                EastPixelX: ${cx + 1}
+                EastPixelY: $cy
+                WestPixelX: ${cx - 1}
+                WestPixelY: $cy
                 CenterElevation: $elevation
                 NorthElevation: $hN
                 SouthElevation: $hS
                 EastElevation: $hE
                 WestElevation: $hW
-                NorthSamePixelAsCenter: ${centerCoords.first == northCoords.first && centerCoords.second == northCoords.second}
-                SouthSamePixelAsCenter: ${centerCoords.first == southCoords.first && centerCoords.second == southCoords.second}
-                EastSamePixelAsCenter: ${centerCoords.first == eastCoords.first && centerCoords.second == eastCoords.second}
-                WestSamePixelAsCenter: ${centerCoords.first == westCoords.first && centerCoords.second == westCoords.second}
+                NorthSamePixelAsCenter: false
+                SouthSamePixelAsCenter: false
+                EastSamePixelAsCenter: false
+                WestSamePixelAsCenter: false
             """.trimIndent())
+            
             return AnalysisResult(
                 elevation, slopeDeg, aspectDeg, source, lat, lon, hN, hS, hE, hW, dzDx, dzDy,
                 aspectRawMath = aspectRawMathDeg,

@@ -115,6 +115,55 @@ class SRTMProvider(private val demDirectory: File) : DEMProvider {
         return if (size == 3601) 30.0 else 90.0
     }
 
+    fun getElevationByPixel(col: Int, row: Int, lat: Double, lon: Double): Double? {
+        val latFloor = Math.floor(lat).toInt()
+        val lonFloor = Math.floor(lon).toInt()
+
+        val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+        val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+        val expectedName = "${latPart}${lonPart}.hgt"
+        val file = findFileCaseInsensitive(demDirectory, expectedName) ?: return null
+
+        val fileLength = file.length()
+        val size = when (fileLength) {
+            2884802L -> 1201
+            25934402L -> 3601
+            else -> return null
+        }
+
+        if (col !in 0 until size || row !in 0 until size) {
+            return null
+        }
+
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                val h = readShort(raf, row, col, size)
+                if (h == -32768) null else h.toDouble()
+            }
+        } catch (e: Exception) {
+            Log.e("SRTMProvider", "Error reading elevation by pixel from ${file.name}", e)
+            null
+        }
+    }
+
+    fun getHgtInfo(lat: Double, lon: Double): Pair<Int, String>? {
+        val latFloor = Math.floor(lat).toInt()
+        val lonFloor = Math.floor(lon).toInt()
+
+        val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+        val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+        val expectedName = "${latPart}${lonPart}.hgt"
+        val file = findFileCaseInsensitive(demDirectory, expectedName) ?: return null
+
+        val fileLength = file.length()
+        val size = when (fileLength) {
+            2884802L -> 1201
+            25934402L -> 3601
+            else -> return null
+        }
+        return Pair(size, "EPSG:4326")
+    }
+
     private fun findFileCaseInsensitive(dir: File, name: String): File? {
         if (!dir.exists()) return null
         val files = dir.listFiles() ?: return null

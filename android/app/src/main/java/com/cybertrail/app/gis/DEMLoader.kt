@@ -118,5 +118,73 @@ class DEMLoader(private val context: Context) {
         // Try ALOS
         return alosProvider.getElevation(lat, lon)
     }
+
+    fun getActiveDEMInfo(lat: Double, lon: Double): ActiveDEMInfo? {
+        // Check GeoTIFF Copernicus first (highest priority/user custom)
+        for (reader in copernicusProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return ActiveDEMInfo(
+                    provider = reader,
+                    crs = reader.crs,
+                    width = reader.width,
+                    height = reader.height,
+                    pixelSizeXMeters = reader.getPixelSizeXMeters(lat),
+                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat)
+                )
+            }
+        }
+        // Check ALOS
+        for (reader in alosProvider.getReaders()) {
+            val elev = reader.getElevation(lat, lon)
+            if (elev != null) {
+                return ActiveDEMInfo(
+                    provider = reader,
+                    crs = reader.crs,
+                    width = reader.width,
+                    height = reader.height,
+                    pixelSizeXMeters = reader.getPixelSizeXMeters(lat),
+                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat)
+                )
+            }
+        }
+        // Check SRTM
+        val srtmElev = srtmProvider.getElevation(lat, lon)
+        if (srtmElev != null) {
+            val hgtInfo = srtmProvider.getHgtInfo(lat, lon)
+            if (hgtInfo != null) {
+                val size = hgtInfo.first
+                val scale = 1.0 / (size - 1)
+                val pixelXMeters = scale * 111120.0 * Math.cos(Math.toRadians(lat))
+                val pixelYMeters = scale * 111120.0
+                return ActiveDEMInfo(
+                    provider = srtmProvider,
+                    crs = hgtInfo.second,
+                    width = size,
+                    height = size,
+                    pixelSizeXMeters = pixelXMeters,
+                    pixelSizeYMeters = pixelYMeters
+                )
+            }
+        }
+        return null
+    }
+
+    fun getElevationByPixel(provider: Any, col: Int, row: Int, lat: Double, lon: Double): Double? {
+        return when (provider) {
+            is GeoTiffReader -> provider.getElevationByPixel(col, row)
+            is SRTMProvider -> provider.getElevationByPixel(col, row, lat, lon)
+            else -> null
+        }
+    }
 }
+
+data class ActiveDEMInfo(
+    val provider: Any,
+    val crs: String,
+    val width: Int,
+    val height: Int,
+    val pixelSizeXMeters: Double,
+    val pixelSizeYMeters: Double
+)
 

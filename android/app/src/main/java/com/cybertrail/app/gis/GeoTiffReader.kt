@@ -49,6 +49,52 @@ class GeoTiffReader(private val file: File) : Closeable {
         }
     }
 
+    val crs: String
+        get() {
+            return if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+                "EPSG:4326"
+            } else if (Math.abs(tiepointX) > 2000000.0 && Math.abs(tiepointX) < 21000000.0) {
+                "EPSG:3857"
+            } else {
+                "EPSG:Unknown"
+            }
+        }
+
+    val width: Int get() = imageWidth
+    val height: Int get() = imageHeight
+
+    val pixelSizeXMeters: Double
+        get() {
+            if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+                val centerLat = tiepointY - (imageHeight * scaleY) / 2.0
+                return scaleX * 111120.0 * Math.cos(Math.toRadians(centerLat))
+            }
+            return scaleX
+        }
+
+    val pixelSizeYMeters: Double
+        get() {
+            if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+                return scaleY * 111120.0
+            }
+            return scaleY
+        }
+
+    fun getPixelSizeXMeters(lat: Double): Double {
+        if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+            val latRad = Math.toRadians(lat)
+            return scaleX * 111120.0 * Math.cos(latRad)
+        }
+        return scaleX
+    }
+
+    fun getPixelSizeYMeters(lat: Double): Double {
+        if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
+            return scaleY * 111120.0
+        }
+        return scaleY
+    }
+
     fun getMetadata(): String {
         val crsName = if (tiepointX in -180.1..180.1 && tiepointY in -90.1..90.1) {
             "Geographic (WGS84)"
@@ -80,12 +126,8 @@ class GeoTiffReader(private val file: File) : Closeable {
     }
 
     @Synchronized
-    fun getElevation(lat: Double, lon: Double): Double? {
+    fun getElevationByPixel(col: Int, row: Int): Double? {
         if (!initialized || raf == null) return null
-
-        val (px, py) = getPixelCoords(lat, lon)
-        val col = px.toInt()
-        val row = py.toInt()
 
         if (col !in 0 until imageWidth || row !in 0 until imageHeight) {
             return null
@@ -145,6 +187,17 @@ class GeoTiffReader(private val file: File) : Closeable {
             Log.e(TAG, "Error seeking/reading elevation at ($col, $row)", e)
             null
         }
+    }
+
+    @Synchronized
+    fun getElevation(lat: Double, lon: Double): Double? {
+        if (!initialized || raf == null) return null
+
+        val (px, py) = getPixelCoords(lat, lon)
+        val col = px.toInt()
+        val row = py.toInt()
+
+        return getElevationByPixel(col, row)
     }
 
     fun getResolutionMeters(): Double {
