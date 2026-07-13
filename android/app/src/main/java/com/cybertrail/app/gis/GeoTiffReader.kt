@@ -249,13 +249,11 @@ class GeoTiffReader(private val file: File) : Closeable {
     }
 
     @Synchronized
-    fun getElevation(lat: Double, lon: Double): Double? {
+    fun getElevationByPixel(col: Double, row: Double): Double? {
         if (!initialized || raf == null) return null
 
-        val (px, py) = getPixelCoords(lat, lon)
-        
-        val x0 = Math.floor(px).toInt()
-        val y0 = Math.floor(py).toInt()
+        val x0 = Math.floor(col).toInt()
+        val y0 = Math.floor(row).toInt()
 
         if (x0 < 0 || x0 >= imageWidth || y0 < 0 || y0 >= imageHeight) {
             return null
@@ -271,8 +269,8 @@ class GeoTiffReader(private val file: File) : Closeable {
             y1 = y0
         }
 
-        val dx = (px - x0).coerceIn(0.0, 1.0)
-        val dy = (py - y0).coerceIn(0.0, 1.0)
+        val dx = (col - x0).coerceIn(0.0, 1.0)
+        val dy = (row - y0).coerceIn(0.0, 1.0)
 
         val q11 = getElevationByPixel(x0, y0)
         val q21 = getElevationByPixel(x1, y0)
@@ -309,6 +307,14 @@ class GeoTiffReader(private val file: File) : Closeable {
         } else {
             return null
         }
+    }
+
+    @Synchronized
+    fun getElevation(lat: Double, lon: Double): Double? {
+        if (!initialized || raf == null) return null
+
+        val (px, py) = getPixelCoords(lat, lon)
+        return getElevationByPixel(px, py)
     }
 
     fun getResolutionMeters(): Double {

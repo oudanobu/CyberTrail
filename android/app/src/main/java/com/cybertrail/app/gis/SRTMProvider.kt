@@ -42,13 +42,40 @@ class SRTMProvider(private val demDirectory: File) : DEMProvider {
         val rowFloat = (1.0 - dLat) * (size - 1)
         val colFloat = dLon * (size - 1)
 
-        val r0 = rowFloat.toInt().coerceIn(0, size - 2)
-        val r1 = r0 + 1
-        val c0 = colFloat.toInt().coerceIn(0, size - 2)
-        val c1 = c0 + 1
+        return getElevationByPixel(colFloat, rowFloat, lat, lon)
+    }
 
-        val weightRow = rowFloat - r0
-        val weightCol = colFloat - c0
+    fun getElevationByPixel(col: Double, row: Double, lat: Double, lon: Double): Double? {
+        val latFloor = Math.floor(lat).toInt()
+        val lonFloor = Math.floor(lon).toInt()
+
+        val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+        val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+        val expectedName = "${latPart}${lonPart}.hgt"
+        val file = findFileCaseInsensitive(demDirectory, expectedName) ?: return null
+
+        val fileLength = file.length()
+        val size = when (fileLength) {
+            2884802L -> 1201
+            25934402L -> 3601
+            else -> return null
+        }
+
+        val r0 = Math.floor(row).toInt()
+        val c0 = Math.floor(col).toInt()
+
+        if (r0 < 0 || r0 >= size || c0 < 0 || c0 >= size) {
+            return null
+        }
+
+        var r1 = r0 + 1
+        var c1 = c0 + 1
+
+        if (r1 >= size) r1 = r0
+        if (c1 >= size) c1 = c0
+
+        val weightRow = (row - r0).coerceIn(0.0, 1.0)
+        val weightCol = (col - c0).coerceIn(0.0, 1.0)
 
         return try {
             RandomAccessFile(file, "r").use { raf ->
@@ -57,18 +84,40 @@ class SRTMProvider(private val demDirectory: File) : DEMProvider {
                 val h10 = readShort(raf, r1, c0, size)
                 val h11 = readShort(raf, r1, c1, size)
 
-                // -32768 is standard SRTM void value
-                if (h00 == -32768 || h01 == -32768 || h10 == -32768 || h11 == -32768) {
-                    val valid = listOf(h00, h01, h10, h11).filter { it != -32768 }
-                    if (valid.isEmpty()) null else valid.average()
-                } else {
-                    val top = h00 * (1.0 - weightCol) + h01 * weightCol
-                    val bottom = h10 * (1.0 - weightCol) + h11 * weightCol
-                    top * (1.0 - weightRow) + bottom * weightRow
+                val q11 = if (h00 == -32768) null else h00.toDouble()
+                val q21 = if (h01 == -32768) null else h01.toDouble()
+                val q12 = if (h10 == -32768) null else h10.toDouble()
+                val q22 = if (h11 == -32768) null else h11.toDouble()
+
+                val w11 = (1.0 - weightCol) * (1.0 - weightRow)
+                val w21 = weightCol * (1.0 - weightRow)
+                val w12 = (1.0 - weightCol) * weightRow
+                val w22 = weightCol * weightRow
+
+                var sumVal = 0.0
+                var sumWeight = 0.0
+
+                if (q11 != null) {
+                    sumVal += q11 * w11
+                    sumWeight += w11
                 }
+                if (q21 != null) {
+                    sumVal += q21 * w21
+                    sumWeight += w21
+                }
+                if (q12 != null) {
+                    sumVal += q12 * w12
+                    sumWeight += w12
+                }
+                if (q22 != null) {
+                    sumVal += q22 * w22
+                    sumWeight += w22
+                }
+
+                if (sumWeight > 0.0) sumVal / sumWeight else null
             }
         } catch (e: Exception) {
-            Log.e("SRTMProvider", "Error reading elevation from ${file.name}", e)
+            Log.e("SRTMProvider", "Error reading elevation by pixel from ${file.name}", e)
             null
         }
     }

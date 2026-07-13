@@ -30,7 +30,16 @@ class TerrainAnalyzer(
         val eastIsSamePixelAsCenter: Boolean,
         val westIsSamePixelAsCenter: Boolean,
         val demResolutionMeters: Double,
-        val neighborOffsetMeters: Double
+        val neighborOffsetMeters: Double,
+        val pixelX: Double? = null,
+        val pixelY: Double? = null,
+        val fractionX: Double? = null,
+        val fractionY: Double? = null,
+        val h00: Double? = null,
+        val h10: Double? = null,
+        val h01: Double? = null,
+        val h11: Double? = null,
+        val interpolatedElevation: Double? = null
     )
 
     data class AnalysisResult(
@@ -83,15 +92,15 @@ class TerrainAnalyzer(
             val activeDEM = demLoader.getActiveDEMInfo(lat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
             val centerCoords = demLoader.getPixelCoords(lat, lon) ?: return AnalysisResult(elevation, null, null, source, lat, lon)
 
-            val cx = centerCoords.first.toInt()
-            val cy = centerCoords.second.toInt()
+            val cx = centerCoords.first
+            val cy = centerCoords.second
 
             val provider = activeDEM.provider
 
-            val hN = demLoader.getElevationByPixel(provider, cx, cy - 1, lat, lon) ?: elevation
-            val hS = demLoader.getElevationByPixel(provider, cx, cy + 1, lat, lon) ?: elevation
-            val hE = demLoader.getElevationByPixel(provider, cx + 1, cy, lat, lon) ?: elevation
-            val hW = demLoader.getElevationByPixel(provider, cx - 1, cy, lat, lon) ?: elevation
+            val hN = demLoader.getElevationByPixel(provider, cx, cy - 1.0, lat, lon) ?: elevation
+            val hS = demLoader.getElevationByPixel(provider, cx, cy + 1.0, lat, lon) ?: elevation
+            val hE = demLoader.getElevationByPixel(provider, cx + 1.0, cy, lat, lon) ?: elevation
+            val hW = demLoader.getElevationByPixel(provider, cx - 1.0, cy, lat, lon) ?: elevation
 
             val dx = activeDEM.pixelSizeXMeters
             val dy = activeDEM.pixelSizeYMeters
@@ -126,17 +135,27 @@ class TerrainAnalyzer(
 
             val demRes = getDEMResolutionMeters(lat, lon) ?: dx
 
+            val x0 = Math.floor(cx).toInt()
+            val y0 = Math.floor(cy).toInt()
+            val fracX = cx - x0
+            val fracY = cy - y0
+
+            val h00 = demLoader.getElevationByPixel(provider, x0.toDouble(), y0.toDouble(), lat, lon) ?: elevation
+            val h10 = demLoader.getElevationByPixel(provider, (x0 + 1).toDouble(), y0.toDouble(), lat, lon) ?: elevation
+            val h01 = demLoader.getElevationByPixel(provider, x0.toDouble(), (y0 + 1).toDouble(), lat, lon) ?: elevation
+            val h11 = demLoader.getElevationByPixel(provider, (x0 + 1).toDouble(), (y0 + 1).toDouble(), lat, lon) ?: elevation
+
             val diagnostic = DEMSamplingDiagnostic(
-                centerPixelX = cx,
-                centerPixelY = cy,
-                northPixelX = cx,
-                northPixelY = cy - 1,
-                southPixelX = cx,
-                southPixelY = cy + 1,
-                eastPixelX = cx + 1,
-                eastPixelY = cy,
-                westPixelX = cx - 1,
-                westPixelY = cy,
+                centerPixelX = cx.toInt(),
+                centerPixelY = cy.toInt(),
+                northPixelX = cx.toInt(),
+                northPixelY = (cy - 1.0).toInt(),
+                southPixelX = cx.toInt(),
+                southPixelY = (cy + 1.0).toInt(),
+                eastPixelX = (cx + 1.0).toInt(),
+                eastPixelY = cy.toInt(),
+                westPixelX = (cx - 1.0).toInt(),
+                westPixelY = cy.toInt(),
                 centerElevation = elevation,
                 northElevation = hN,
                 southElevation = hS,
@@ -147,32 +166,26 @@ class TerrainAnalyzer(
                 eastIsSamePixelAsCenter = false,
                 westIsSamePixelAsCenter = false,
                 demResolutionMeters = demRes,
-                neighborOffsetMeters = dx
+                neighborOffsetMeters = dx,
+                pixelX = cx,
+                pixelY = cy,
+                fractionX = fracX,
+                fractionY = fracY,
+                h00 = h00,
+                h10 = h10,
+                h01 = h01,
+                h11 = h11,
+                interpolatedElevation = elevation
             )
 
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             Log.d("DEM_VALIDATION", """
                 [DEM Real-time Sampling Diagnostics]
                 Lat: $lat, Lon: $lon
-                CenterPixelX: $cx
-                CenterPixelY: $cy
-                NorthPixelX: $cx
-                NorthPixelY: ${cy - 1}
-                SouthPixelX: $cx
-                SouthPixelY: ${cy + 1}
-                EastPixelX: ${cx + 1}
-                EastPixelY: $cy
-                WestPixelX: ${cx - 1}
-                WestPixelY: $cy
-                CenterElevation: $elevation
-                NorthElevation: $hN
-                SouthElevation: $hS
-                EastElevation: $hE
-                WestElevation: $hW
-                NorthSamePixelAsCenter: false
-                SouthSamePixelAsCenter: false
-                EastSamePixelAsCenter: false
-                WestSamePixelAsCenter: false
+                PixelX: $cx, PixelY: $cy
+                FractionX: $fracX, FractionY: $fracY
+                h00: $h00, h10: $h10, h01: $h01, h11: $h11
+                InterpolatedElevation: $elevation
             """.trimIndent())
             
             return AnalysisResult(

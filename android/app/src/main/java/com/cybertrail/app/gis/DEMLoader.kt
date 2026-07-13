@@ -177,6 +177,14 @@ class DEMLoader(private val context: Context) {
             else -> null
         }
     }
+
+    fun getElevationByPixel(provider: Any, col: Double, row: Double, lat: Double, lon: Double): Double? {
+        return when (provider) {
+            is GeoTiffReader -> provider.getElevationByPixel(col, row)
+            is SRTMProvider -> provider.getElevationByPixel(col, row, lat, lon)
+            else -> null
+        }
+    }
 }
 
 data class ActiveDEMInfo(
