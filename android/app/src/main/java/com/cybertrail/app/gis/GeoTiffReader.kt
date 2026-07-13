@@ -34,6 +34,12 @@ class GeoTiffReader(private val file: File) : Closeable {
 
     private var initialized = false
 
+    private var cachedTileIdx = -1
+    private var cachedTileData: ByteArray? = null
+
+    private var cachedStripIdx = -1
+    private var cachedStripData: ByteArray? = null
+
     companion object {
         private const val TAG = "GeoTiffReader"
     }
@@ -125,6 +131,43 @@ class GeoTiffReader(private val file: File) : Closeable {
         """.trimIndent()
     }
 
+    private fun readValueFromBytes(data: ByteArray, offset: Int): Double? {
+        if (offset < 0 || offset + (bitsPerSample / 8) > data.size) return null
+        return when (bitsPerSample) {
+            16 -> {
+                val b1 = data[offset].toInt() and 0xFF
+                val b2 = data[offset + 1].toInt() and 0xFF
+                val uVal = if (isLittleEndian) {
+                    b1 or (b2 shl 8)
+                } else {
+                    (b1 shl 8) or b2
+                }
+                if (sampleFormat == 2) {
+                    uVal.toShort().toDouble()
+                } else {
+                    uVal.toDouble()
+                }
+            }
+            32 -> {
+                val b1 = data[offset].toInt() and 0xFF
+                val b2 = data[offset + 1].toInt() and 0xFF
+                val b3 = data[offset + 2].toInt() and 0xFF
+                val b4 = data[offset + 3].toInt() and 0xFF
+                val bits = if (isLittleEndian) {
+                    b1 or (b2 shl 8) or (b3 shl 16) or (b4 shl 24)
+                } else {
+                    (b1 shl 24) or (b2 shl 16) or (b3 shl 8) or b4
+                }
+                if (sampleFormat == 3) {
+                    java.lang.Float.intBitsToFloat(bits).toDouble()
+                } else {
+                    bits.toDouble()
+                }
+            }
+            else -> null
+        }
+    }
+
     @Synchronized
     fun getElevationByPixel(col: Int, row: Int): Double? {
         if (!initialized || raf == null) return null
@@ -133,48 +176,64 @@ class GeoTiffReader(private val file: File) : Closeable {
             return null
         }
 
+        if (compression != 1) {
+            Log.w(TAG, "Compressed GeoTIFF is not supported")
+            return null
+        }
+
+        val bytesPerPixel = bitsPerSample / 8
+
         return try {
             val rafInstance = raf ?: return null
-            val offset = getPixelFileOffset(col, row) ?: return null
-            rafInstance.seek(offset)
+            var rawVal: Double? = null
 
-            val rawVal = when (bitsPerSample) {
-                16 -> {
-                    val b1 = rafInstance.read()
-                    val b2 = rafInstance.read()
-                    if (b1 == -1 || b2 == -1) return null
-                    val uVal = if (isLittleEndian) {
-                        b1 or (b2 shl 8)
-                    } else {
-                        (b1 shl 8) or b2
+            if (tileOffsets.isNotEmpty()) {
+                val tileCols = (imageWidth + tileWidth - 1) / tileWidth
+                val tileCol = col / tileWidth
+                val tileRow = row / tileLength
+                val tileIdx = tileRow * tileCols + tileCol
+
+                if (tileIdx in tileOffsets.indices) {
+                    val tileX = col % tileWidth
+                    val tileY = row % tileLength
+                    val offsetInTile = (tileY * tileWidth + tileX) * bytesPerPixel
+
+                    if (cachedTileIdx != tileIdx || cachedTileData == null) {
+                        val byteCount = tileByteCounts[tileIdx].toInt()
+                        val buffer = ByteArray(byteCount)
+                        rafInstance.seek(tileOffsets[tileIdx])
+                        rafInstance.readFully(buffer)
+                        cachedTileData = buffer
+                        cachedTileIdx = tileIdx
                     }
-                    if (sampleFormat == 2) {
-                        uVal.toShort().toDouble()
-                    } else {
-                        uVal.toDouble()
-                    }
+
+                    rawVal = cachedTileData?.let { readValueFromBytes(it, offsetInTile) }
                 }
-                32 -> {
-                    val b1 = rafInstance.read()
-                    val b2 = rafInstance.read()
-                    val b3 = rafInstance.read()
-                    val b4 = rafInstance.read()
-                    if (b1 == -1 || b2 == -1 || b3 == -1 || b4 == -1) return null
-                    val bits = if (isLittleEndian) {
-                        b1 or (b2 shl 8) or (b3 shl 16) or (b4 shl 24)
-                    } else {
-                        (b1 shl 24) or (b2 shl 16) or (b3 shl 8) or b4
+            } else if (stripOffsets.isNotEmpty()) {
+                val actualRowsPerStrip = if (rowsPerStrip <= 0) imageHeight else rowsPerStrip
+                val stripIdx = row / actualRowsPerStrip
+                val rowInStrip = row % actualRowsPerStrip
+                val offsetInStrip = (rowInStrip * imageWidth + col) * bytesPerPixel
+
+                if (stripIdx in stripOffsets.indices) {
+                    if (cachedStripIdx != stripIdx || cachedStripData == null) {
+                        val byteCount = stripByteCounts[stripIdx].toInt()
+                        val buffer = ByteArray(byteCount)
+                        rafInstance.seek(stripOffsets[stripIdx])
+                        rafInstance.readFully(buffer)
+                        cachedStripData = buffer
+                        cachedStripIdx = stripIdx
                     }
-                    if (sampleFormat == 3) {
-                        java.lang.Float.intBitsToFloat(bits).toDouble()
-                    } else {
-                        bits.toDouble()
-                    }
+
+                    rawVal = cachedStripData?.let { readValueFromBytes(it, offsetInStrip) }
                 }
-                else -> {
-                    Log.w(TAG, "Unsupported BitsPerSample: $bitsPerSample")
-                    null
-                }
+            } else {
+                // Fallback to direct reading if neither is available (though standard TIFF has one)
+                val offset = getPixelFileOffset(col, row) ?: return null
+                rafInstance.seek(offset)
+                val buffer = ByteArray(bytesPerPixel)
+                rafInstance.readFully(buffer)
+                rawVal = readValueFromBytes(buffer, 0)
             }
 
             // Filter out common no-data values in DEMs (like -32768, -9999, etc.)
@@ -194,10 +253,62 @@ class GeoTiffReader(private val file: File) : Closeable {
         if (!initialized || raf == null) return null
 
         val (px, py) = getPixelCoords(lat, lon)
-        val col = px.toInt()
-        val row = py.toInt()
+        
+        val x0 = Math.floor(px).toInt()
+        val y0 = Math.floor(py).toInt()
 
-        return getElevationByPixel(col, row)
+        if (x0 < 0 || x0 >= imageWidth || y0 < 0 || y0 >= imageHeight) {
+            return null
+        }
+
+        var x1 = x0 + 1
+        var y1 = y0 + 1
+
+        if (x1 >= imageWidth) {
+            x1 = x0
+        }
+        if (y1 >= imageHeight) {
+            y1 = y0
+        }
+
+        val dx = (px - x0).coerceIn(0.0, 1.0)
+        val dy = (py - y0).coerceIn(0.0, 1.0)
+
+        val q11 = getElevationByPixel(x0, y0)
+        val q21 = getElevationByPixel(x1, y0)
+        val q12 = getElevationByPixel(x0, y1)
+        val q22 = getElevationByPixel(x1, y1)
+
+        val w11 = (1.0 - dx) * (1.0 - dy)
+        val w21 = dx * (1.0 - dy)
+        val w12 = (1.0 - dx) * dy
+        val w22 = dx * dy
+
+        var sumVal = 0.0
+        var sumWeight = 0.0
+
+        if (q11 != null) {
+            sumVal += q11 * w11
+            sumWeight += w11
+        }
+        if (q21 != null) {
+            sumVal += q21 * w21
+            sumWeight += w21
+        }
+        if (q12 != null) {
+            sumVal += q12 * w12
+            sumWeight += w12
+        }
+        if (q22 != null) {
+            sumVal += q22 * w22
+            sumWeight += w22
+        }
+
+        if (sumWeight > 0.0) {
+            return sumVal / sumWeight
+        } else {
+            return null
+        }
     }
 
     fun getResolutionMeters(): Double {
