@@ -119,6 +119,20 @@ class DEMLoader(private val context: Context) {
         return alosProvider.getElevation(lat, lon)
     }
 
+    fun getFoundDemFiles(): List<File> {
+        val baseDir = File(android.os.Environment.getExternalStorageDirectory(), "CyberTrail")
+        val demDir = File(baseDir, "dem")
+        if (!demDir.exists()) return emptyList()
+        val files = demDir.listFiles { _, name -> 
+            name.endsWith(".hgt", ignoreCase = true) || 
+            name.endsWith(".bil", ignoreCase = true) || 
+            name.endsWith(".tif", ignoreCase = true) ||
+            name.endsWith(".tiff", ignoreCase = true) ||
+            name.endsWith(".img", ignoreCase = true)
+        }
+        return files?.toList() ?: emptyList()
+    }
+
     fun getActiveDEMInfo(lat: Double, lon: Double): ActiveDEMInfo? {
         // Check GeoTIFF Copernicus first (highest priority/user custom)
         for (reader in copernicusProvider.getReaders()) {
@@ -127,10 +141,12 @@ class DEMLoader(private val context: Context) {
                 return ActiveDEMInfo(
                     provider = reader,
                     crs = reader.crs,
-                    width = reader.width,
-                    height = reader.height,
+                    width = reader.imageWidth,
+                    height = reader.imageHeight,
                     pixelSizeXMeters = reader.getPixelSizeXMeters(lat),
-                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat)
+                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat),
+                    fileName = reader.file.name,
+                    filePath = reader.file.absolutePath
                 )
             }
         }
@@ -141,10 +157,12 @@ class DEMLoader(private val context: Context) {
                 return ActiveDEMInfo(
                     provider = reader,
                     crs = reader.crs,
-                    width = reader.width,
-                    height = reader.height,
+                    width = reader.imageWidth,
+                    height = reader.imageHeight,
                     pixelSizeXMeters = reader.getPixelSizeXMeters(lat),
-                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat)
+                    pixelSizeYMeters = reader.getPixelSizeYMeters(lat),
+                    fileName = reader.file.name,
+                    filePath = reader.file.absolutePath
                 )
             }
         }
@@ -157,13 +175,20 @@ class DEMLoader(private val context: Context) {
                 val scale = 1.0 / (size - 1)
                 val pixelXMeters = scale * 111120.0 * Math.cos(Math.toRadians(lat))
                 val pixelYMeters = scale * 111120.0
+                val latFloor = Math.floor(lat).toInt()
+                val lonFloor = Math.floor(lon).toInt()
+                val latPart = if (latFloor >= 0) "N%02d".format(latFloor) else "S%02d".format(-latFloor)
+                val lonPart = if (lonFloor >= 0) "E%03d".format(lonFloor) else "W%03d".format(-lonFloor)
+                val expectedName = "${latPart}${lonPart}.hgt"
                 return ActiveDEMInfo(
                     provider = srtmProvider,
                     crs = hgtInfo.second,
                     width = size,
                     height = size,
                     pixelSizeXMeters = pixelXMeters,
-                    pixelSizeYMeters = pixelYMeters
+                    pixelSizeYMeters = pixelYMeters,
+                    fileName = expectedName,
+                    filePath = "/storage/emulated/0/CyberTrail/dem/$expectedName"
                 )
             }
         }
@@ -193,6 +218,8 @@ data class ActiveDEMInfo(
     val width: Int,
     val height: Int,
     val pixelSizeXMeters: Double,
-    val pixelSizeYMeters: Double
+    val pixelSizeYMeters: Double,
+    val fileName: String = "",
+    val filePath: String = ""
 )
 

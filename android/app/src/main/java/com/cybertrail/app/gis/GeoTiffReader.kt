@@ -5,7 +5,7 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.io.Closeable
 
-class GeoTiffReader(private val file: File) : Closeable {
+class GeoTiffReader(val file: File) : Closeable {
 
     private var raf: RandomAccessFile? = null
     private var isLittleEndian = true

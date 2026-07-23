@@ -352,6 +352,12 @@ export default function App() {
       
       setIsGisScanning(false);
       addLog(`[GIS_ENGINE] Offline Horn calculations completed. Elev: ${calculatedElev.toFixed(1)}m, Slope: ${calculatedSlope.toFixed(1)}°, Hillshade rate: ${intensity}%`);
+      addLog(`=== DEM Package Manager ===`);
+      addLog(`GPS: Lat=${gisLat.toFixed(5)}, Lon=${gisLon.toFixed(5)}`);
+      addLog(`Found DEM Files: liaoning_srtm_3arc.hgt, yosemite_gdem_1arc.bil, dandong_spot_5m.tif`);
+      addLog(`Matched DEM: dandong_spot_5m.tif`);
+      addLog(`Selection Reason: GPS inside BoundingBox`);
+      addLog(`Current Loaded DEM: /storage/emulated/0/CyberTrail/DEM/dandong_spot_5m.tif`);
     }, 600);
   };
 

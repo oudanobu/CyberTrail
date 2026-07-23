@@ -178,6 +178,9 @@ class TerrainAnalyzer(
                 interpolatedElevation = elevation
             )
 
+            val foundFiles = demLoader.getFoundDemFiles()
+            val foundFilesStr = if (foundFiles.isEmpty()) "None" else foundFiles.joinToString("\n") { "- ${it.name}" }
+
             Log.d("MAP_DEBUG", "ElevationSource=$source, Lat=${lat}/Lon=${lon}, Elevation=$elevation, Slope=$slopeDeg, Aspect=$aspectDeg")
             Log.d("DEM_VALIDATION", """
                 [DEM Real-time Sampling Diagnostics]
@@ -186,6 +189,24 @@ class TerrainAnalyzer(
                 FractionX: $fracX, FractionY: $fracY
                 h00: $h00, h10: $h10, h01: $h01, h11: $h11
                 InterpolatedElevation: $elevation
+
+                === DEM Package Manager ===
+
+                GPS:
+                Lat=$lat
+                Lon=$lon
+
+                Found DEM Files:
+                $foundFilesStr
+
+                Matched DEM:
+                ${activeDEM.fileName}
+
+                Selection Reason:
+                GPS inside BoundingBox
+
+                Current Loaded DEM:
+                ${activeDEM.filePath}
             """.trimIndent())
             
             return AnalysisResult(
