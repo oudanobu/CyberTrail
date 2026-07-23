@@ -16,7 +16,10 @@ import {
   RefreshCw, 
   FileText, 
   Sliders,
-  Database
+  Database,
+  Navigation,
+  Zap,
+  Footprints
 } from 'lucide-react';
 
 // Interfaces for Offline Architecture simulation
@@ -41,8 +44,44 @@ interface DirectoryItem {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'index' | 'downloader' | 'directory' | 'gis' | 'architecture'>('index');
+  const [activeTab, setActiveTab] = useState<'index' | 'downloader' | 'directory' | 'gis' | 'ins' | 'architecture'>('ins');
   const [offlineMode, setOfflineMode] = useState<boolean>(true);
+
+  // INS / PDR Simulator State (Phase 10)
+  const [insNavState, setInsNavState] = useState<'NORMAL' | 'HYBRID' | 'INS_ONLY' | 'GPS_RECOVERY'>('NORMAL');
+  const [insHeading, setInsHeading] = useState<number>(45.0); // Heading theta in degrees (45 deg = NE)
+  const [insStepCount, setInsStepCount] = useState<number>(0);
+  const [insStepLength, setInsStepLength] = useState<number>(0.72); // meters
+  const [insLat, setInsLat] = useState<number>(40.12345);
+  const [insLon, setInsLon] = useState<number>(124.38910);
+  const [insDriftNorth, setInsDriftNorth] = useState<number>(0.0);
+  const [insDriftEast, setInsDriftEast] = useState<number>(0.0);
+  const [autoWalk, setAutoWalk] = useState<boolean>(false);
+
+  // INS Track Log
+  const [insTrackPoints, setInsTrackPoints] = useState<Array<{
+    id: number;
+    time: string;
+    lat: number;
+    lon: number;
+    elev: number;
+    slope: number;
+    aspect: number;
+    source: 'GPS' | 'INS' | 'GPS+INS';
+    navState: string;
+  }>>([
+    {
+      id: 1,
+      time: new Date().toLocaleTimeString(),
+      lat: 40.12345,
+      lon: 124.38910,
+      elev: 754.2,
+      slope: 18.5,
+      aspect: 135.0,
+      source: 'GPS',
+      navState: 'NORMAL'
+    }
+  ]);
   
   // Custom query parameters for Map Selection Rule-Selector Analyzer
   const [queryLat, setQueryLat] = useState<number>(40.123665);
@@ -306,6 +345,79 @@ export default function App() {
     runSourceSelector(queryLat, queryLon, queryZoom);
   }, [queryLat, queryLon, queryZoom, installedPkgIdsString]);
 
+  // INS / PDR Simulation Engine Functions
+  const executePdrStep = () => {
+    const headingRad = (insHeading * Math.PI) / 180.0;
+    const deltaNorth = insStepLength * Math.cos(headingRad);
+    const deltaEast = insStepLength * Math.sin(headingRad);
+
+    const deltaLatDeg = (deltaNorth / 6378137.0) * (180.0 / Math.PI);
+    const deltaLonDeg = (deltaEast / (6378137.0 * Math.cos(insLat * Math.PI / 180.0))) * (180.0 / Math.PI);
+
+    const newLat = insLat + deltaLatDeg;
+    const newLon = insLon + deltaLonDeg;
+    
+    setInsLat(newLat);
+    setInsLon(newLon);
+    setInsStepCount(prev => prev + 1);
+
+    if (insNavState === 'INS_ONLY') {
+      setInsDriftNorth(prev => prev + deltaNorth * 0.05);
+      setInsDriftEast(prev => prev + deltaEast * 0.05);
+    }
+
+    // Re-query DEM terrain
+    const x = (newLon + 122.4194) * 111000.0;
+    const y = (newLat - 37.7749) * 111000.0;
+    const wave1 = Math.sin(x / 3000.0) * Math.cos(y / 3000.0) * 820.0;
+    const wave2 = Math.sin(x / 500.0) * Math.cos(y / 500.0) * 140.0;
+    const calculatedElev = Math.abs(620.0 + wave1 + wave2);
+    const calculatedSlope = Math.abs(Math.sin(y / 800.0) * 35.0) + Math.abs(Math.cos(x / 1400.0) * 12.0);
+    const calculatedAspect = (Math.abs(x + y) * 13.5) % 360;
+
+    const sourceLabel: 'GPS' | 'INS' | 'GPS+INS' = 
+      insNavState === 'INS_ONLY' ? 'INS' :
+      insNavState === 'HYBRID' || insNavState === 'GPS_RECOVERY' ? 'GPS+INS' : 'GPS';
+
+    setInsTrackPoints(prev => [
+      ...prev,
+      {
+        id: prev.length + 1,
+        time: new Date().toLocaleTimeString(),
+        lat: newLat,
+        lon: newLon,
+        elev: Number(calculatedElev.toFixed(1)),
+        slope: Number(calculatedSlope.toFixed(1)),
+        aspect: Number(calculatedAspect.toFixed(1)),
+        source: sourceLabel,
+        navState: insNavState
+      }
+    ]);
+
+    addLog(`[INS_PDR] Step #${insStepCount + 1} (${insStepLength}m @ ${insHeading}°). PDR Lat=${newLat.toFixed(6)}, Lon=${newLon.toFixed(6)}. DEM Elev=${calculatedElev.toFixed(1)}m. Source: [${sourceLabel}]`);
+  };
+
+  const handleGpsRecovery = () => {
+    setInsNavState('GPS_RECOVERY');
+    addLog(`[KALMAN_FUSION] GPS signal re-acquired! Entering GPS_RECOVERY mode.`);
+    addLog(`[KALMAN_FUSION] Fusing GPS measurement with INS accumulated drift: N=${insDriftNorth.toFixed(2)}m, E=${insDriftEast.toFixed(2)}m.`);
+
+    setTimeout(() => {
+      setInsDriftNorth(0.0);
+      setInsDriftEast(0.0);
+      setInsNavState('NORMAL');
+      addLog(`[KALMAN_FUSION] Drift successfully corrected. NavState smoothly returned to NORMAL.`);
+    }, 1200);
+  };
+
+  useEffect(() => {
+    if (!autoWalk) return;
+    const timer = setInterval(() => {
+      executePdrStep();
+    }, 800);
+    return () => clearInterval(timer);
+  }, [autoWalk, insHeading, insStepLength, insLat, insLon, insNavState, insStepCount]);
+
   // Offline GIS terrain analysis math
   const executeGisAnalysisOffgrid = () => {
     if (!hasDemFiles) {
@@ -454,6 +566,14 @@ export default function App() {
             >
               <Activity className="w-3.5 h-3.5" />
               独立 DEM 物理海拔
+            </button>
+            <button 
+              id="tab_ins"
+              onClick={() => setActiveTab('ins')} 
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'ins' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+            >
+              <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+              INS / PDR 惯性导航
             </button>
             <button 
               id="tab_architecture"
@@ -1018,7 +1138,278 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 5: Unified Audit Report and Call Trace */}
+          {/* TAB 5: INS / PDR CyberTrail Inertial Navigation System */}
+          {activeTab === 'ins' && (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md space-y-6 transition-all duration-300">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-5 h-5 text-emerald-400" />
+                  <h2 className="text-base font-bold text-white">Phase 10：CyberTrail 惯性导航与 PDR 步频推算系统</h2>
+                </div>
+                <div className="px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[10px]">
+                  GNSS + PDR + Kalman Fusion
+                </div>
+              </div>
+
+              {/* Navigation State Controller */}
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">导航状态切换器 (NavState Controller)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">当前导航状态:</span>
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold uppercase border ${
+                      insNavState === 'NORMAL' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' :
+                      insNavState === 'HYBRID' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' :
+                      insNavState === 'INS_ONLY' ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse' :
+                      'bg-teal-500/20 text-teal-400 border-teal-500/40'
+                    }`}>
+                      {insNavState}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  <button
+                    id="btn_state_normal"
+                    onClick={() => {
+                      setInsNavState('NORMAL');
+                      addLog(`[NAV_STATE] Switch to NORMAL: GPS accuracy <= 15m.`);
+                    }}
+                    className={`p-2 rounded-lg border text-left text-xs font-medium transition ${insNavState === 'NORMAL' ? 'border-emerald-500 bg-emerald-500/10 text-white' : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'}`}
+                  >
+                    <div className="font-bold text-emerald-400">NORMAL</div>
+                    <div className="text-[10px] text-slate-400">GPS 信号良好</div>
+                  </button>
+
+                  <button
+                    id="btn_state_hybrid"
+                    onClick={() => {
+                      setInsNavState('HYBRID');
+                      addLog(`[NAV_STATE] Switch to HYBRID: Fusing GPS + IMU PDR.`);
+                    }}
+                    className={`p-2 rounded-lg border text-left text-xs font-medium transition ${insNavState === 'HYBRID' ? 'border-cyan-500 bg-cyan-500/10 text-white' : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'}`}
+                  >
+                    <div className="font-bold text-cyan-400">HYBRID</div>
+                    <div className="text-[10px] text-slate-400">GPS + IMU 混合导航</div>
+                  </button>
+
+                  <button
+                    id="btn_state_ins_only"
+                    onClick={() => {
+                      setInsNavState('INS_ONLY');
+                      addLog(`[NAV_STATE] Switch to INS_ONLY: GPS signal lost (>4s). PDR dead reckoning active!`);
+                    }}
+                    className={`p-2 rounded-lg border text-left text-xs font-medium transition ${insNavState === 'INS_ONLY' ? 'border-amber-500 bg-amber-500/10 text-white' : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'}`}
+                  >
+                    <div className="font-bold text-amber-400">INS_ONLY</div>
+                    <div className="text-[10px] text-slate-400">GPS 完全丢失 (断网/山洞)</div>
+                  </button>
+
+                  <button
+                    id="btn_state_recovery"
+                    onClick={handleGpsRecovery}
+                    className={`p-2 rounded-lg border text-left text-xs font-medium transition ${insNavState === 'GPS_RECOVERY' ? 'border-teal-500 bg-teal-500/10 text-white' : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'}`}
+                  >
+                    <div className="font-bold text-teal-400">GPS_RECOVERY</div>
+                    <div className="text-[10px] text-slate-400">GPS 恢复 & Kalman 校正</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* PDR Step & Orientation Controls */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Footprints className="w-4 h-4 text-emerald-400" />
+                      步长 & 航向推算配置
+                    </span>
+                    <span className="text-xs font-mono text-emerald-400">Step #{insStepCount}</span>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs text-slate-400 mb-1">
+                      <span>航向角 (Heading θ):</span>
+                      <span className="font-mono text-white font-bold">{insHeading}° ({
+                        insHeading >= 337.5 || insHeading < 22.5 ? "N 正北" :
+                        insHeading < 67.5 ? "NE 东北" :
+                        insHeading < 112.5 ? "E 正东" :
+                        insHeading < 157.5 ? "SE 东南" :
+                        insHeading < 202.5 ? "S 正南" :
+                        insHeading < 247.5 ? "SW 西南" :
+                        insHeading < 292.5 ? "W 正西" : "NW 西北"
+                      })</span>
+                    </div>
+                    <input 
+                      id="ins_slider_heading"
+                      type="range" 
+                      min="0" 
+                      max="359" 
+                      value={insHeading} 
+                      onChange={(e) => setInsHeading(parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs text-slate-400 mb-1">
+                      <span>Weinberg 步长估计 (Step Length):</span>
+                      <span className="font-mono text-white font-bold">{insStepLength.toFixed(2)} meters</span>
+                    </div>
+                    <input 
+                      id="ins_slider_step_length"
+                      type="range" 
+                      min="0.40" 
+                      max="1.20" 
+                      step="0.02" 
+                      value={insStepLength} 
+                      onChange={(e) => setInsStepLength(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      id="btn_pdr_step"
+                      onClick={executePdrStep}
+                      className="flex-1 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5"
+                    >
+                      <Footprints className="w-4 h-4" />
+                      迈步一次 (Single Step)
+                    </button>
+
+                    <button
+                      id="btn_auto_walk"
+                      onClick={() => setAutoWalk(!autoWalk)}
+                      className={`px-4 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 border ${
+                        autoWalk 
+                          ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
+                          : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      <Zap className="w-4 h-4" />
+                      {autoWalk ? "停止步行" : "自动连续步行"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* IMU Sensors Real-time Readings */}
+                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Activity className="w-4 h-4 text-cyan-400" />
+                      IMU 6-Axis Sensors Real-time Data
+                    </span>
+                    <span className="text-[10px] text-slate-400">100Hz Hardware Polling</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[10px]">ACCELEROMETER</span>
+                      <span className="text-emerald-400 font-bold">X: 0.12 Y: 9.81 Z: 0.45</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Magnitude: 9.82 m/s²</span>
+                    </div>
+
+                    <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[10px]">GYROSCOPE</span>
+                      <span className="text-cyan-400 font-bold">ωX: 0.01 ωY: 0.02 ωZ: {((insHeading - 180) / 100).toFixed(2)}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Rad/s orientation rate</span>
+                    </div>
+
+                    <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[10px]">MAGNETIC FIELD</span>
+                      <span className="text-amber-400 font-bold">Mx: 18.2 My: -32.4 Mz: 42.1</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">uT Geomagnetic Vector</span>
+                    </div>
+
+                    <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[10px]">PDR ACCUMULATED DRIFT</span>
+                      <span className="text-rose-400 font-bold">N: {insDriftNorth.toFixed(2)}m E: {insDriftEast.toFixed(2)}m</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Kalman Covariance: P=0.42</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Real-time Fused Location & DEM Terrain Sync Panel */}
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-xs font-semibold text-slate-300">
+                    实时融合定位与 DEM 物理地形刷新 (Live Position & DEM Terrain Sync)
+                  </span>
+                  <span className="text-xs font-mono text-emerald-400 font-bold">
+                    [来源: {
+                      insNavState === 'INS_ONLY' ? 'INS' :
+                      insNavState === 'HYBRID' || insNavState === 'GPS_RECOVERY' ? 'GPS+INS' : 'GPS'
+                    }]
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">Latitude 纬度</span>
+                    <span className="text-sm font-mono font-bold text-white">{insLat.toFixed(6)}°</span>
+                  </div>
+
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">Longitude 经度</span>
+                    <span className="text-sm font-mono font-bold text-white">{insLon.toFixed(6)}°</span>
+                  </div>
+
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">DEM 海拔 (Elevation)</span>
+                    <span className="text-sm font-mono font-bold text-amber-400">
+                      {insTrackPoints[insTrackPoints.length - 1]?.elev || 754.2} m
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">Horn 3D 坡度 (Slope)</span>
+                    <span className="text-sm font-mono font-bold text-teal-400">
+                      {insTrackPoints[insTrackPoints.length - 1]?.slope || 18.5}°
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 col-span-2 md:col-span-1">
+                    <span className="text-[10px] text-slate-400 block">坡向 (Aspect)</span>
+                    <span className="text-sm font-mono font-bold text-cyan-400">
+                      {insTrackPoints[insTrackPoints.length - 1]?.aspect || 135.0}°
+                    </span>
+                  </div>
+                </div>
+
+                {/* Track Point Log with Source Tagging */}
+                <div className="space-y-2 pt-2">
+                  <span className="text-xs font-semibold text-slate-400 block">
+                    轨迹记录列表 (Track Log with Source Tagging: GPS vs INS vs GPS+INS)
+                  </span>
+                  
+                  <div className="max-h-48 overflow-y-auto bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-xs space-y-1">
+                    {insTrackPoints.slice().reverse().map(pt => (
+                      <div key={pt.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 text-[10px]">{pt.time}</span>
+                          <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                            pt.source === 'INS' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                            pt.source === 'GPS+INS' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                            'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            [{pt.source}]
+                          </span>
+                          <span>Lat: {pt.lat.toFixed(6)}, Lon: {pt.lon.toFixed(6)}</span>
+                        </div>
+                        <div className="text-slate-400 text-[11px]">
+                          Elev: <span className="text-amber-400 font-bold">{pt.elev}m</span> | Slope: {pt.slope}° | Aspect: {pt.aspect}°
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: Unified Audit Report and Call Trace */}
           {activeTab === 'architecture' && (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md space-y-6 transition-all duration-300">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">

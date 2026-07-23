@@ -25,5 +25,6 @@ data class TrackPoint(
     val elevation: Double?,
     val timestamp: Long,
     val speed: Float,
-    val accuracy: Float
+    val accuracy: Float,
+    val provider: String = "GPS"
 )

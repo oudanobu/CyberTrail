@@ -132,11 +132,40 @@ class TrackForegroundService : Service() {
     }
 
     private lateinit var demSystem: DEMSystem
+    private lateinit var insPdrManager: com.cybertrail.app.gis.ins.InsPdrManager
 
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         demSystem = DEMSystem(applicationContext)
+        
+        insPdrManager = com.cybertrail.app.gis.ins.InsPdrManager(
+            applicationContext,
+            object : com.cybertrail.app.gis.ins.InsPdrManager.InsPdrListener {
+                override fun onPositionUpdated(
+                    lat: Double,
+                    lon: Double,
+                    elevation: Double?,
+                    slope: Double?,
+                    aspect: Double?,
+                    navState: com.cybertrail.app.gis.ins.NavState,
+                    source: String,
+                    headingDeg: Float,
+                    stepCount: Long,
+                    driftMeters: Double
+                ) {
+                    handlePositionUpdateFromIns(lat, lon, elevation, source)
+                }
+
+                override fun onNavStateChanged(
+                    newState: com.cybertrail.app.gis.ins.NavState,
+                    oldState: com.cybertrail.app.gis.ins.NavState
+                ) {
+                    Log.i(TAG, "NavState changed from $oldState to $newState")
+                }
+            }
+        )
+        insPdrManager.start()
         createNotificationChannel()
     }
 
@@ -273,20 +302,24 @@ class TrackForegroundService : Service() {
 
     private fun handleNewLocation(location: Location) {
         if (currentStatus != "RECORDING") return
+        insPdrManager.onGpsLocation(location)
+    }
+
+    private fun handlePositionUpdateFromIns(lat: Double, lon: Double, elevationVal: Double?, source: String) {
+        if (currentStatus != "RECORDING") return
 
         dbExecutor.execute {
             val lastPt = synchronized(currentPoints) { currentPoints.lastOrNull() }
-            val timeDiff = location.time - (lastPt?.timestamp ?: 0L)
+            val nowMs = System.currentTimeMillis()
+            val timeDiff = nowMs - (lastPt?.timestamp ?: 0L)
             
             val distDiff = lastPt?.let {
                 val results = FloatArray(1)
-                Location.distanceBetween(it.latitude, it.longitude, location.latitude, location.longitude, results)
+                Location.distanceBetween(it.latitude, it.longitude, lat, lon, results)
                 results[0]
             } ?: 0f
 
-            if (lastPt == null || timeDiff >= 2000L || distDiff >= 2f) {
-                val elevationVal = demSystem.getElevation(location.latitude, location.longitude)
-                
+            if (lastPt == null || timeDiff >= 1500L || distDiff >= 1.5f) {
                 if (lastPt != null) {
                     totalDistanceMeters += distDiff
                     currentDistanceMeters = totalDistanceMeters
@@ -302,12 +335,13 @@ class TrackForegroundService : Service() {
 
                 val tp = TrackPoint(
                     trackId = trackId,
-                    latitude = location.latitude,
-                    longitude = location.longitude,
+                    latitude = lat,
+                    longitude = lon,
                     elevation = elevationVal,
-                    timestamp = location.time,
-                    speed = if (location.hasSpeed()) location.speed else 0f,
-                    accuracy = if (location.hasAccuracy()) location.accuracy else 0f
+                    timestamp = nowMs,
+                    speed = 0f,
+                    accuracy = if (source == "GPS") 5f else 12f,
+                    provider = source
                 )
 
                 val db = AppDatabase.getDatabase(applicationContext)
@@ -318,7 +352,7 @@ class TrackForegroundService : Service() {
                     currentPointCount = currentPoints.size
                 }
 
-                Log.d(TAG, "Recorded point: Lat ${tp.latitude}, Lon ${tp.longitude}")
+                Log.d(TAG, "Recorded $source point: Lat $lat, Lon $lon, Elev $elevationVal")
 
                 val intent = Intent(ACTION_NEW_POINT).apply {
                     putExtra(EXTRA_POINT_LAT, tp.latitude)
@@ -428,6 +462,7 @@ class TrackForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        insPdrManager.stop()
         unregisterLocationUpdates()
         dbExecutor.shutdown()
         Log.d(TAG, "Service destroyed")

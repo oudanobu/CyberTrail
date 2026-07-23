@@ -97,6 +97,7 @@ object TrackFileHelper {
                     put("timestamp", pt.timestamp)
                     put("speed", pt.speed)
                     put("accuracy", pt.accuracy)
+                    put("provider", pt.provider)
                 }
                 pointsArray.put(ptJson)
             }
@@ -143,6 +144,7 @@ object TrackFileHelper {
                     val timestamp = ptJson.getLong("timestamp")
                     val speed = ptJson.optDouble("speed", 0.0).toFloat()
                     val accuracy = ptJson.optDouble("accuracy", 0.0).toFloat()
+                    val provider = ptJson.optString("provider", "GPS")
 
                     pointsList.add(TrackPoint(
                         id = ptId,
@@ -152,7 +154,8 @@ object TrackFileHelper {
                         elevation = elevation,
                         timestamp = timestamp,
                         speed = speed,
-                        accuracy = accuracy
+                        accuracy = accuracy,
+                        provider = provider
                     ))
                 }
             }
