@@ -9,6 +9,7 @@ import android.location.Location
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.cybertrail.app.gis.DEMLoader
 import com.cybertrail.app.gis.DEMSystem
 import com.cybertrail.app.gis.TerrainAnalyzer
 
@@ -20,7 +21,10 @@ import com.cybertrail.app.gis.TerrainAnalyzer
  */
 class InsPdrManager(
     private val context: Context,
-    private val listener: InsPdrListener? = null
+    private val listener: InsPdrListener? = null,
+    private val demSystem: DEMSystem = DEMSystem(context),
+    private val demLoader: DEMLoader = demSystem.demLoader,
+    private val terrainAnalyzer: TerrainAnalyzer = demSystem.terrainAnalyzer
 ) : StepDetector.StepListener, SensorEventListener {
 
     interface InsPdrListener {
@@ -47,8 +51,6 @@ class InsPdrManager(
     }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val demSystem = DEMSystem(context)
-    private val terrainAnalyzer = TerrainAnalyzer()
 
     private val stepDetector = StepDetector(this)
     private val headingEstimator = HeadingEstimator()
@@ -211,7 +213,7 @@ class InsPdrManager(
 
         val hgt = demSystem.getElevation(lat, lon)
         if (hgt != null) {
-            val res = terrainAnalyzer.analyze(lat, lon, demSystem)
+            val res = terrainAnalyzer.analyzeLocation(lat, lon)
             slope = res.slope
             aspect = res.aspect
         }
