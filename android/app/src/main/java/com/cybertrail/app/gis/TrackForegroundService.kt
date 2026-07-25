@@ -133,6 +133,7 @@ class TrackForegroundService : Service() {
 
     private lateinit var demSystem: DEMSystem
     private lateinit var insPdrManager: com.cybertrail.app.gis.ins.InsPdrManager
+    private lateinit var positionManager: PositionManager
 
     override fun onCreate() {
         super.onCreate()
@@ -154,6 +155,7 @@ class TrackForegroundService : Service() {
                     stepCount: Long,
                     driftMeters: Double
                 ) {
+                    positionManager.onInsPdrPositionUpdate(lat, lon, elevation)
                     handlePositionUpdateFromIns(lat, lon, elevation, source)
                 }
 
@@ -165,7 +167,23 @@ class TrackForegroundService : Service() {
                 }
             }
         )
+
+        positionManager = PositionManager(
+            applicationContext,
+            object : PositionManager.PositionListener {
+                override fun onPositionUpdated(location: CyberLocation) {
+                    Log.d(TAG, "PositionManager update: Lat=${location.latitude}, Lon=${location.longitude}, Source=${location.source}")
+                }
+
+                override fun onLocationSourceChanged(newSource: LocationSource, oldSource: LocationSource) {
+                    Log.i(TAG, "Location source shifted from $oldSource to $newSource")
+                }
+            },
+            insPdrManager
+        )
+
         insPdrManager.start()
+        positionManager.startLocationUpdates()
         createNotificationChannel()
     }
 
@@ -463,6 +481,7 @@ class TrackForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         insPdrManager.stop()
+        positionManager.stopLocationUpdates()
         unregisterLocationUpdates()
         dbExecutor.shutdown()
         Log.d(TAG, "Service destroyed")

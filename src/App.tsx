@@ -19,7 +19,8 @@ import {
   Database,
   Navigation,
   Zap,
-  Footprints
+  Footprints,
+  MapPin
 } from 'lucide-react';
 
 // Interfaces for Offline Architecture simulation
@@ -57,6 +58,17 @@ export default function App() {
   const [insDriftNorth, setInsDriftNorth] = useState<number>(0.0);
   const [insDriftEast, setInsDriftEast] = useState<number>(0.0);
   const [autoWalk, setAutoWalk] = useState<boolean>(false);
+
+  // PositionManager State
+  const [currentLocationSource, setCurrentLocationSource] = useState<'GPS' | 'Network' | 'Cell' | 'Last Fix' | 'INS' | 'Manual'>('GPS');
+  const [lastFixCache, setLastFixCache] = useState<{ lat: number; lon: number; alt: number; time: string }>({
+    lat: 40.12345,
+    lon: 124.38910,
+    alt: 754.2,
+    time: new Date().toLocaleTimeString()
+  });
+  const [manualInputLat, setManualInputLat] = useState<number>(40.12650);
+  const [manualInputLon, setManualInputLon] = useState<number>(124.39200);
 
   // INS Track Log
   const [insTrackPoints, setInsTrackPoints] = useState<Array<{
@@ -1148,6 +1160,167 @@ export default function App() {
                 </div>
                 <div className="px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[10px]">
                   GNSS + PDR + Kalman Fusion
+                </div>
+              </div>
+
+              {/* PositionManager Location Source State Machine Panel */}
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Compass className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-semibold text-slate-300">PositionManager 位置来源管理器 (Location Source State Machine)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Current Location Source:</span>
+                    <span id="badge_location_source" className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold uppercase border ${
+                      currentLocationSource === 'GPS' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' :
+                      currentLocationSource === 'Network' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' :
+                      currentLocationSource === 'Cell' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' :
+                      currentLocationSource === 'Last Fix' ? 'bg-purple-500/20 text-purple-400 border-purple-500/40' :
+                      currentLocationSource === 'INS' ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' :
+                      'bg-rose-500/20 text-rose-400 border-rose-500/40'
+                    }`}>
+                      {currentLocationSource}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Source Priority Selector */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>定位优先级机制 (GPS → Network → Cell → Last Fix → INS → Manual)</span>
+                    <span className="font-mono text-emerald-400">优先级 1 ~ 6 自动回退</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                    {[
+                      { id: 'GPS', name: 'GPS', prio: 'P1', desc: '卫星高精定位', color: 'text-emerald-400' },
+                      { id: 'Network', name: 'Network', prio: 'P2', desc: 'Wi-Fi/基站网络', color: 'text-cyan-400' },
+                      { id: 'Cell', name: 'Cell', prio: 'P3', desc: '蜂窝基站三角', color: 'text-blue-400' },
+                      { id: 'Last Fix', name: 'Last Fix', prio: 'P4', desc: '本地持久化缓存', color: 'text-purple-400' },
+                      { id: 'INS', name: 'INS / PDR', prio: 'P5', desc: '惯性步频推算', color: 'text-amber-400' },
+                      { id: 'Manual', name: 'Manual', prio: 'P6', desc: '手动指定坐标', color: 'text-rose-400' }
+                    ].map(src => (
+                      <button
+                        key={src.id}
+                        id={`btn_source_${src.id.toLowerCase().replace(/\s+/g, '_')}`}
+                        onClick={() => {
+                          const srcType = src.id as any;
+                          setCurrentLocationSource(srcType);
+                          if (srcType === 'INS') {
+                            setInsNavState('INS_ONLY');
+                          } else if (srcType === 'GPS') {
+                            setInsNavState('NORMAL');
+                          }
+                          addLog(`[POSITION_MANAGER] Switched location source to ${src.id} (${src.prio}). Current coordinates active.`);
+                        }}
+                        className={`p-2 rounded-lg border text-left transition ${
+                          currentLocationSource === src.id 
+                            ? 'bg-slate-800 border-cyan-500 shadow-md' 
+                            : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-bold ${src.color}`}>{src.name}</span>
+                          <span className="text-[9px] font-mono bg-slate-950 px-1 py-0.5 rounded text-slate-400">{src.prio}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5 truncate">{src.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Last Fix & Manual Position Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  {/* Last Fix Persistence Display */}
+                  <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                        <Database className="w-3.5 h-3.5 text-purple-400" />
+                        Last Fix 本地持久化缓存 (SharedPreferences)
+                      </span>
+                      <span className="text-[10px] text-purple-400 font-mono">App启动秒开</span>
+                    </div>
+                    <div className="text-xs font-mono text-slate-400 grid grid-cols-2 gap-1 bg-slate-950 p-2 rounded border border-slate-800/80">
+                      <div><span className="text-slate-500">Latitude:</span> <span className="text-white">{lastFixCache.lat.toFixed(6)}°</span></div>
+                      <div><span className="text-slate-500">Longitude:</span> <span className="text-white">{lastFixCache.lon.toFixed(6)}°</span></div>
+                      <div><span className="text-slate-500">Elevation:</span> <span className="text-amber-400">{lastFixCache.alt}m</span></div>
+                      <div><span className="text-slate-500">Timestamp:</span> <span className="text-cyan-400">{lastFixCache.time}</span></div>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      即使无 GPS 信号，地图与 INS 亦无须等待，直接从 Last Fix 坐标无缝加载并进行推算。
+                    </div>
+                  </div>
+
+                  {/* Manual Position Selector */}
+                  <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                        Manual Position 手动位置覆盖
+                      </span>
+                      <span className="text-[10px] text-slate-400">点击航点 / 坐标设置</span>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input 
+                        id="input_manual_lat"
+                        type="number"
+                        step="0.0001"
+                        value={manualInputLat}
+                        onChange={(e) => setManualInputLat(parseFloat(e.target.value) || 0)}
+                        placeholder="Latitude"
+                        className="w-1/2 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-white focus:outline-none focus:border-rose-500"
+                      />
+                      <input 
+                        id="input_manual_lon"
+                        type="number"
+                        step="0.0001"
+                        value={manualInputLon}
+                        onChange={(e) => setManualInputLon(parseFloat(e.target.value) || 0)}
+                        placeholder="Longitude"
+                        className="w-1/2 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-white focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+
+                    <div className="flex gap-1.5 pt-0.5">
+                      <button
+                        id="btn_apply_manual_pos"
+                        onClick={() => {
+                          setInsLat(manualInputLat);
+                          setInsLon(manualInputLon);
+                          setCurrentLocationSource('Manual');
+                          setLastFixCache({
+                            lat: manualInputLat,
+                            lon: manualInputLon,
+                            alt: 754.2,
+                            time: new Date().toLocaleTimeString()
+                          });
+                          addLog(`[MANUAL_POS] Set current position manually to Lat: ${manualInputLat.toFixed(6)}, Lon: ${manualInputLon.toFixed(6)}. INS dead reckoning starting point reset.`);
+                        }}
+                        className="flex-1 py-1.5 rounded bg-rose-500/20 border border-rose-500/40 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition flex items-center justify-center gap-1"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        应用手动坐标 (Set Location)
+                      </button>
+
+                      <button
+                        id="btn_preset_basecamp"
+                        onClick={() => {
+                          const pLat = 40.12000;
+                          const pLon = 124.38500;
+                          setManualInputLat(pLat);
+                          setManualInputLon(pLon);
+                          setInsLat(pLat);
+                          setInsLon(pLon);
+                          setCurrentLocationSource('Manual');
+                          addLog(`[MANUAL_POS] Jumped to Waypoint Preset: BaseCamp (Lat ${pLat}, Lon ${pLon})`);
+                        }}
+                        className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700"
+                      >
+                        BaseCamp
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
