@@ -10,5 +10,8 @@ data class Track(
     var endTime: Long? = null,
     var status: String = "RECORDING", // "RECORDING", "PAUSED", "STOPPED"
     var name: String? = null,
-    var favorite: Boolean = false
+    var favorite: Boolean = false,
+    var stepCount: Int = 0,
+    var averageCadence: Float = 0f,
+    var averageStepLength: Float = 0f
 )

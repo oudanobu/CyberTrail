@@ -272,7 +272,7 @@ class TrackDetailActivity : AppCompatActivity() {
                 sbReplayTimeline.max = if (points.size > 1) points.size - 1 else 100
                 sbReplayTimeline.progress = 0
                 
-                // Update 13 stats
+                // Update 16 stats
                 updateStatCard(R.id.card_stat_distance, "📐 总距离", String.format(Locale.US, "%.2f km", totalDistanceMeters / 1000f))
                 updateStatCard(R.id.card_stat_duration, "⏱️ 总时长", formatDuration(totalDurationSec))
                 updateStatCard(R.id.card_stat_points, "📍 轨迹点数", "${points.size}")
@@ -284,6 +284,9 @@ class TrackDetailActivity : AppCompatActivity() {
                 updateStatCard(R.id.card_stat_avg_speed, "平均速度", String.format(Locale.US, "%.2f m/s", avgSpeed))
                 updateStatCard(R.id.card_stat_max_speed, "最高速度", String.format(Locale.US, "%.2f m/s", maxSpeed))
                 updateStatCard(R.id.card_stat_avg_ele, "平均海拔", String.format(Locale.US, "%.1f m", avgElevation))
+                updateStatCard(R.id.card_stat_step_count, "👣 总步数", "${track.stepCount} 步")
+                updateStatCard(R.id.card_stat_avg_cadence, "👟 平均步频", String.format(Locale.US, "%.1f spm", track.averageCadence))
+                updateStatCard(R.id.card_stat_avg_step_len, "📏 平均步长", String.format(Locale.US, "%.2f m", track.averageStepLength))
                 updateStatCard(R.id.card_stat_start_time, "开始时间", formatDateTime(track.startTime))
                 updateStatCard(R.id.card_stat_end_time, "结束时间", track.endTime?.let { formatDateTime(it) } ?: "--:--")
 

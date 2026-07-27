@@ -62,6 +62,9 @@ object TrackFileHelper {
                 put("endTime", track.endTime ?: JSONObject.NULL)
                 put("status", track.status)
                 put("name", track.name ?: JSONObject.NULL)
+                put("stepCount", track.stepCount)
+                put("averageCadence", track.averageCadence)
+                put("averageStepLength", track.averageStepLength)
                 
                 // Photo anchors
                 val photoArray = JSONArray()
@@ -128,8 +131,20 @@ object TrackFileHelper {
             val endTime = if (trackJson.isNull("endTime")) null else trackJson.getLong("endTime")
             val status = trackJson.getString("status")
             val name = if (trackJson.isNull("name")) null else trackJson.getString("name")
+            val stepCount = trackJson.optInt("stepCount", 0)
+            val averageCadence = trackJson.optDouble("averageCadence", 0.0).toFloat()
+            val averageStepLength = trackJson.optDouble("averageStepLength", 0.0).toFloat()
 
-            val track = Track(id = id, startTime = startTime, endTime = endTime, status = status, name = name)
+            val track = Track(
+                id = id,
+                startTime = startTime,
+                endTime = endTime,
+                status = status,
+                name = name,
+                stepCount = stepCount,
+                averageCadence = averageCadence,
+                averageStepLength = averageStepLength
+            )
 
             val pointsList = mutableListOf<TrackPoint>()
             if (json.has("points")) {
@@ -310,6 +325,11 @@ object TrackFileHelper {
 
                     sb.append("  <trk>\n")
                     sb.append("    <name><![CDATA[${track.name ?: "Track #${track.id}"}]]></name>\n")
+                    sb.append("    <extensions>\n")
+                    sb.append("      <stepCount>${track.stepCount}</stepCount>\n")
+                    sb.append("      <averageCadence>${String.format(Locale.US, "%.1f", track.averageCadence)}</averageCadence>\n")
+                    sb.append("      <averageStepLength>${String.format(Locale.US, "%.2f", track.averageStepLength)}</averageStepLength>\n")
+                    sb.append("    </extensions>\n")
                     sb.append("    <trkseg>\n")
 
                     for (pt in points) {
@@ -645,6 +665,30 @@ object TrackFileHelper {
             doc.documentElement.normalize()
 
             var trackName = gpxFile.nameWithoutExtension.replace('_', ' ')
+            var parsedStepCount = 0
+            var parsedAverageCadence = 0f
+            var parsedAverageStepLength = 0f
+
+            val extList = doc.getElementsByTagName("extensions")
+            if (extList.length > 0) {
+                val extNode = extList.item(0)
+                if (extNode.nodeType == Node.ELEMENT_NODE) {
+                    val extElement = extNode as Element
+                    val scList = extElement.getElementsByTagName("stepCount")
+                    if (scList.length > 0) {
+                        parsedStepCount = scList.item(0).textContent.trim().toIntOrNull() ?: 0
+                    }
+                    val acList = extElement.getElementsByTagName("averageCadence")
+                    if (acList.length > 0) {
+                        parsedAverageCadence = acList.item(0).textContent.trim().toFloatOrNull() ?: 0f
+                    }
+                    val aslList = extElement.getElementsByTagName("averageStepLength")
+                    if (aslList.length > 0) {
+                        parsedAverageStepLength = aslList.item(0).textContent.trim().toFloatOrNull() ?: 0f
+                    }
+                }
+            }
+
             val trkList = doc.getElementsByTagName("trk")
             if (trkList.length > 0) {
                 val trkNode = trkList.item(0)
@@ -753,7 +797,10 @@ object TrackFileHelper {
                 startTime = startTime,
                 endTime = endTime,
                 status = "STOPPED",
-                name = trackName
+                name = trackName,
+                stepCount = parsedStepCount,
+                averageCadence = parsedAverageCadence,
+                averageStepLength = parsedAverageStepLength
             )
             val trackId = trackDao.insertTrack(newTrack)
             val insertedTrack = newTrack.copy(id = trackId)

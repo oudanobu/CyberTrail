@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Track::class, TrackPoint::class, PhotoAnchor::class, WaypointEntity::class, RouteEntity::class], version = 7, exportSchema = false)
+@Database(entities = [Track::class, TrackPoint::class, PhotoAnchor::class, WaypointEntity::class, RouteEntity::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao
     abstract fun waypointDao(): WaypointDao
@@ -67,6 +67,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE tracks ADD COLUMN stepCount INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE tracks ADD COLUMN averageCadence REAL NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE tracks ADD COLUMN averageStepLength REAL NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -74,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "cybertrail_database"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

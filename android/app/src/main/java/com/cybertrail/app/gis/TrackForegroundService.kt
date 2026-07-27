@@ -7,6 +7,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.os.Build
 import android.os.Handler
@@ -25,9 +29,10 @@ import com.cybertrail.app.db.AppDatabase
 import com.cybertrail.app.db.Track
 import com.cybertrail.app.db.TrackPoint
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 
-class TrackForegroundService : Service() {
+class TrackForegroundService : Service(), SensorEventListener {
 
     companion object {
         private const val TAG = "TrackForegroundService"
@@ -54,6 +59,9 @@ class TrackForegroundService : Service() {
         const val EXTRA_DURATION = "extra_duration"
         const val EXTRA_DISTANCE = "extra_distance"
         const val EXTRA_POINTS_COUNT = "extra_points_count"
+        const val EXTRA_STEP_COUNT = "extra_step_count"
+        const val EXTRA_CURRENT_CADENCE = "extra_current_cadence"
+        const val EXTRA_AVG_STEP_LENGTH = "extra_avg_step_length"
         
         @Volatile
         var isRunning = false
@@ -96,12 +104,37 @@ class TrackForegroundService : Service() {
         @Volatile
         var totalAscentMeters: Double = 0.0
             private set
+
+        @Volatile
+        var sessionStepCount: Int = 0
+            internal set
+
+        @Volatile
+        var currentCadence: Float = 0f
+            internal set
+
+        @Volatile
+        var averageStepLength: Float = 0f
+            internal set
     }
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private val dbExecutor = Executors.newSingleThreadExecutor()
     private var lastDiskSaveTime = 0L
     private val diskSaveIntervalMs = 15000L // save every 15s to ensure disk-sync and gpx-refresh
+
+    // Step counting hardware & fallback fields
+    private var sensorManager: SensorManager? = null
+    private var stepCounterSensor: Sensor? = null
+    private var isStepCounterRegistered = false
+
+    private var initialHwSteps = -1L
+    private var stepsInPreviousSegments = 0
+
+    private var initialInsSteps = -1L
+    private var lastHandledInsSteps = -1L
+
+    private val recentStepTimestamps = ConcurrentLinkedQueue<Long>()
 
     private val serviceHandler = Handler(Looper.getMainLooper())
     private val timerRunnable = object : Runnable {
@@ -110,6 +143,8 @@ class TrackForegroundService : Service() {
                 elapsedSeconds++
                 activeDurationSeconds = elapsedSeconds
                 
+                processInsStepUpdate()
+                updateStepStats()
                 updateNotificationWithStats()
 
                 // Broadcast tick
@@ -117,6 +152,9 @@ class TrackForegroundService : Service() {
                     putExtra(EXTRA_DURATION, elapsedSeconds)
                     putExtra(EXTRA_DISTANCE, currentDistanceMeters)
                     putExtra(EXTRA_POINTS_COUNT, currentPointCount)
+                    putExtra(EXTRA_STEP_COUNT, sessionStepCount)
+                    putExtra(EXTRA_CURRENT_CADENCE, currentCadence)
+                    putExtra(EXTRA_AVG_STEP_LENGTH, averageStepLength)
                 }
                 sendBroadcast(intent)
             }
@@ -139,6 +177,10 @@ class TrackForegroundService : Service() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         demSystem = DEMSystem(applicationContext)
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        stepCounterSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        Log.i(TAG, "Hardware TYPE_STEP_COUNTER available: ${stepCounterSensor != null}")
         
         insPdrManager = com.cybertrail.app.gis.ins.InsPdrManager(
             applicationContext,
@@ -155,6 +197,7 @@ class TrackForegroundService : Service() {
                     stepCount: Long,
                     driftMeters: Double
                 ) {
+                    processInsStepUpdate()
                     positionManager.onInsPdrPositionUpdate(lat, lon, elevation)
                     handlePositionUpdateFromIns(lat, lon, elevation, source)
                 }
@@ -206,6 +249,15 @@ class TrackForegroundService : Service() {
                     totalDistanceMeters = 0f
                     activeDurationSeconds = 0L
                     totalAscentMeters = 0.0
+
+                    sessionStepCount = 0
+                    currentCadence = 0f
+                    averageStepLength = 0f
+                    stepsInPreviousSegments = 0
+                    initialHwSteps = -1L
+                    initialInsSteps = insPdrManager.totalStepCount
+                    lastHandledInsSteps = initialInsSteps
+                    recentStepTimestamps.clear()
                     
                     synchronized(currentPoints) {
                         currentPoints.clear()
@@ -258,6 +310,7 @@ class TrackForegroundService : Service() {
 
                     startForegroundServiceCompat()
                     registerLocationUpdates()
+                    registerStepCounterListener()
                     
                     serviceHandler.removeCallbacks(timerRunnable)
                     serviceHandler.postDelayed(timerRunnable, 1000L)
@@ -265,12 +318,23 @@ class TrackForegroundService : Service() {
             }
             ACTION_PAUSE -> {
                 currentStatus = "PAUSED"
+                stepsInPreviousSegments = sessionStepCount
+                initialHwSteps = -1L
+                initialInsSteps = -1L
+                recentStepTimestamps.clear()
+                unregisterStepCounterListener()
+
                 updateNotificationWithStats()
                 unregisterLocationUpdates()
                 forceSaveToDisk()
             }
             ACTION_RESUME -> {
                 currentStatus = "RECORDING"
+                initialHwSteps = -1L
+                initialInsSteps = insPdrManager.totalStepCount
+                lastHandledInsSteps = initialInsSteps
+                registerStepCounterListener()
+
                 updateNotificationWithStats()
                 registerLocationUpdates()
                 forceSaveToDisk()
@@ -278,15 +342,134 @@ class TrackForegroundService : Service() {
             ACTION_STOP -> {
                 currentStatus = "STOPPED"
                 isRunning = false
+                unregisterStepCounterListener()
+                stepsInPreviousSegments = sessionStepCount
+
+                val finalAvgCadence = if (activeDurationSeconds > 0) (sessionStepCount * 60f / activeDurationSeconds) else 0f
+                val finalAvgStepLen = if (sessionStepCount > 0) (currentDistanceMeters / sessionStepCount) else 0f
+
+                dbExecutor.execute {
+                    val db = AppDatabase.getDatabase(applicationContext)
+                    val track = db.trackDao().getTrackById(trackId)
+                    if (track != null) {
+                        track.status = "STOPPED"
+                        track.endTime = System.currentTimeMillis()
+                        track.stepCount = sessionStepCount
+                        track.averageCadence = finalAvgCadence
+                        track.averageStepLength = finalAvgStepLen
+                        db.trackDao().updateTrack(track)
+                    }
+                    saveTrackFile()
+                }
+
                 serviceHandler.removeCallbacks(timerRunnable)
                 unregisterLocationUpdates()
-                forceSaveToDisk()
                 stopForeground(true)
                 stopSelf()
             }
         }
 
         return START_STICKY
+    }
+
+    private fun registerStepCounterListener() {
+        if (stepCounterSensor != null && !isStepCounterRegistered) {
+            try {
+                isStepCounterRegistered = sensorManager?.registerListener(
+                    this,
+                    stepCounterSensor,
+                    SensorManager.SENSOR_DELAY_UI
+                ) ?: false
+                Log.d(TAG, "Registered TYPE_STEP_COUNTER listener: $isStepCounterRegistered")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error registering TYPE_STEP_COUNTER listener", e)
+            }
+        }
+    }
+
+    private fun unregisterStepCounterListener() {
+        if (isStepCounterRegistered) {
+            try {
+                sensorManager?.unregisterListener(this)
+                isStepCounterRegistered = false
+                Log.d(TAG, "Unregistered TYPE_STEP_COUNTER listener")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unregistering TYPE_STEP_COUNTER listener", e)
+            }
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || event.sensor.type != Sensor.TYPE_STEP_COUNTER) return
+        if (currentStatus != "RECORDING") return
+
+        val totalHw = event.values[0].toLong()
+        if (initialHwSteps < 0L) {
+            initialHwSteps = totalHw
+        }
+
+        val currentSegmentSteps = (totalHw - initialHwSteps).coerceAtLeast(0L).toInt()
+        val newTotalSteps = stepsInPreviousSegments + currentSegmentSteps
+        val addedSteps = newTotalSteps - sessionStepCount
+
+        if (addedSteps > 0) {
+            val now = System.currentTimeMillis()
+            for (i in 0 until addedSteps) {
+                recentStepTimestamps.add(now)
+            }
+            sessionStepCount = newTotalSteps
+            updateStepStats()
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun processInsStepUpdate() {
+        if (stepCounterSensor != null) return // Hardware step counter takes priority
+        if (currentStatus != "RECORDING") return
+
+        val totalIns = insPdrManager.totalStepCount
+        if (initialInsSteps < 0L) {
+            initialInsSteps = totalIns
+            lastHandledInsSteps = totalIns
+        }
+
+        val currentSegmentSteps = (totalIns - initialInsSteps).coerceAtLeast(0L).toInt()
+        val newTotalSteps = stepsInPreviousSegments + currentSegmentSteps
+        val addedSteps = (totalIns - lastHandledInsSteps).coerceAtLeast(0L).toInt()
+
+        if (addedSteps > 0) {
+            lastHandledInsSteps = totalIns
+            val now = System.currentTimeMillis()
+            for (i in 0 until addedSteps) {
+                recentStepTimestamps.add(now)
+            }
+            sessionStepCount = newTotalSteps
+            updateStepStats()
+        }
+    }
+
+    private fun updateStepStats() {
+        val now = System.currentTimeMillis()
+        val cutoff = now - 10_000L
+        while (recentStepTimestamps.peek()?.let { it < cutoff } == true) {
+            recentStepTimestamps.poll()
+        }
+
+        val recentCount = recentStepTimestamps.size
+        currentCadence = if (recentCount > 0) {
+            (recentCount * 60f / 10f)
+        } else if (elapsedSeconds > 0) {
+            (sessionStepCount * 60f / elapsedSeconds)
+        } else {
+            0f
+        }
+
+        averageStepLength = if (sessionStepCount > 0) {
+            (currentDistanceMeters / sessionStepCount)
+        } else {
+            0f
+        }
     }
 
     private fun registerLocationUpdates() {
@@ -400,8 +583,11 @@ class TrackForegroundService : Service() {
             val pts = synchronized(currentPoints) { ArrayList(currentPoints) }
             val anchors = db.trackDao().getPhotoAnchorsForTrack(tId)
             track.status = currentStatus
+            track.stepCount = sessionStepCount
+            track.averageCadence = if (activeDurationSeconds > 0) (sessionStepCount * 60f / activeDurationSeconds) else 0f
+            track.averageStepLength = if (sessionStepCount > 0) (currentDistanceMeters / sessionStepCount) else 0f
             TrackFileHelper.saveTrackToJson(track, pts, anchors)
-            Log.d(TAG, "Saved track to disk: ${pts.size} points")
+            Log.d(TAG, "Saved track to disk: ${pts.size} points, $sessionStepCount steps")
         }
     }
 
@@ -435,15 +621,17 @@ class TrackForegroundService : Service() {
         val formattedDist = currentDistanceMeters / 1000f
         val formattedTime = formatDuration(elapsedSeconds)
 
-        val detailText = "时间：%s\n距离：%.2f km\n轨迹点：%d".format(
+        val detailText = "时间：%s\n距离：%.2f km\n轨迹点：%d\n步数：%d 步 | 步频：%.0f spm".format(
             formattedTime,
             formattedDist,
-            currentPointCount
+            currentPointCount,
+            sessionStepCount,
+            currentCadence
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(titleText)
-            .setContentText("时间：%s | 距离：%.2f km | 轨迹点：%d".format(formattedTime, formattedDist, currentPointCount))
+            .setContentText("时间：%s | 距离：%.2f km | 步数：%d 步".format(formattedTime, formattedDist, sessionStepCount))
             .setStyle(NotificationCompat.BigTextStyle().bigText(detailText))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
@@ -480,6 +668,7 @@ class TrackForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterStepCounterListener()
         insPdrManager.stop()
         positionManager.stopLocationUpdates()
         unregisterLocationUpdates()

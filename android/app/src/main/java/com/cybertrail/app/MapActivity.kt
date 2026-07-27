@@ -3145,7 +3145,12 @@ ${finalStyleJsonString ?: "None"}
             val mins = (trackTotalSeconds % 3600) / 60
             val secs = trackTotalSeconds % 60
             val timeStr = "%02d:%02d:%02d".format(hrs, mins, secs)
-            tvTrackStats.text = "点数: $pointCount | 时间: $timeStr"
+
+            val stepCount = com.cybertrail.app.gis.TrackForegroundService.sessionStepCount
+            val cadence = com.cybertrail.app.gis.TrackForegroundService.currentCadence
+            val stepLen = com.cybertrail.app.gis.TrackForegroundService.averageStepLength
+
+            tvTrackStats.text = "点数: $pointCount | 时间: $timeStr\n步数: $stepCount 步 | 步频: %.0f spm | 步长: %.2f m".format(cadence, stepLen)
         }
     }
 
