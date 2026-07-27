@@ -1327,6 +1327,7 @@ ${finalStyleJsonString ?: "None"}
                 if (map.locationComponent.isLocationComponentEnabled) {
                     map.locationComponent.forceLocationUpdate(androidLoc)
                 }
+                Unit
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating LocationComponent with CurrentPosition", e)
             }
