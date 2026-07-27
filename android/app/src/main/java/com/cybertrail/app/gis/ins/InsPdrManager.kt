@@ -257,4 +257,14 @@ class InsPdrManager(
 
     fun getFusedLatitude(): Double = kalmanEngine.fusedLat
     fun getFusedLongitude(): Double = kalmanEngine.fusedLon
+
+    /**
+     * Resets the INS Origin reference point to a specified Manual / Waypoint coordinate.
+     * PDR dead reckoning continues forward from this origin.
+     */
+    fun resetOrigin(lat: Double, lon: Double) {
+        kalmanEngine.initialize(lat, lon)
+        queryDemAndNotify(lat, lon, "Manual")
+        Log.i(TAG, "INS Origin reset to coordinate: Lat=$lat, Lon=$lon")
+    }
 }

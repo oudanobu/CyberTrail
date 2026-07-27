@@ -135,6 +135,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, LocationListener {
 
     private lateinit var locationManager: LocationManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var positionManager: com.cybertrail.app.gis.PositionManager
+    private lateinit var insPdrManager: com.cybertrail.app.gis.ins.InsPdrManager
     private lateinit var tvPanelLat: TextView
     private lateinit var tvPanelLon: TextView
     private lateinit var tvPanelAlt: TextView
@@ -634,11 +636,62 @@ ${finalStyleJsonString ?: "None"}
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
+        insPdrManager = com.cybertrail.app.gis.ins.InsPdrManager(
+            applicationContext,
+            object : com.cybertrail.app.gis.ins.InsPdrManager.InsPdrListener {
+                override fun onPositionUpdated(
+                    lat: Double,
+                    lon: Double,
+                    elevation: Double?,
+                    slope: Double?,
+                    aspect: Double?,
+                    navState: com.cybertrail.app.gis.ins.NavState,
+                    source: String,
+                    headingDeg: Float,
+                    stepCount: Long,
+                    driftMeters: Double
+                ) {
+                    positionManager.onInsPdrPositionUpdate(lat, lon, elevation)
+                }
+
+                override fun onNavStateChanged(
+                    newState: com.cybertrail.app.gis.ins.NavState,
+                    oldState: com.cybertrail.app.gis.ins.NavState
+                ) {
+                    Log.i("MapActivity", "InsPdr NavState changed: $oldState -> $newState")
+                }
+            },
+            demSystem = demSystem
+        )
+
+        positionManager = com.cybertrail.app.gis.PositionManager(
+            applicationContext,
+            object : com.cybertrail.app.gis.PositionManager.PositionListener {
+                override fun onPositionUpdated(location: com.cybertrail.app.gis.CyberLocation) {
+                    onCurrentPositionUpdated(location)
+                }
+
+                override fun onLocationSourceChanged(
+                    newSource: com.cybertrail.app.gis.LocationSource,
+                    oldSource: com.cybertrail.app.gis.LocationSource
+                ) {
+                    Log.i("MapActivity", "Location source changed: $oldSource -> $newSource")
+                }
+            },
+            insPdrManager = insPdrManager
+        )
+
+        insPdrManager.start()
+        positionManager.startLocationUpdates()
+
         initTrackRecording()
         initTrackReplay()
         initWaypoints()
         runOfflineDiagnostics()
         startGpsTracking()
+
+        // Trigger immediate position update from Last Fix / initial position
+        onCurrentPositionUpdated(positionManager.currentLocation)
     }
 
     private fun runOfflineDiagnostics() {
@@ -1245,30 +1298,37 @@ ${finalStyleJsonString ?: "None"}
     }
 
     override fun onLocationChanged(location: Location) {
-        val lat = location.latitude
-        val lon = location.longitude
-        lastGpsAltitude = demSystem.getElevation(lat, lon)
+        positionManager.onGpsLocation(location)
+        insPdrManager.onGpsLocation(location)
+    }
+
+    private fun onCurrentPositionUpdated(cyberLoc: com.cybertrail.app.gis.CyberLocation) {
+        val lat = cyberLoc.latitude
+        val lon = cyberLoc.longitude
         lastGpsLatitude = lat
         lastGpsLongitude = lon
-        
-        Log.d("CYBERTRAIL_MAP", "CurrentLatitude: $lat, CurrentLongitude: $lon, Accuracy: ${location.accuracy}, Bearing: ${location.bearing}, Provider: ${location.provider ?: "GPS"}")
+        lastGpsAltitude = cyberLoc.altitude ?: demSystem.getElevation(lat, lon)
 
-        updateLocationPanel(location)
+        Log.d("CYBERTRAIL_MAP", "CurrentPosition updated: lat=$lat, lon=$lon, source=${cyberLoc.source.displayName}, acc=${cyberLoc.accuracy}")
+
+        val androidLoc = cyberLoc.toAndroidLocation()
+
+        updateLocationPanel(cyberLoc)
         updateTerrainHud(lat, lon)
         updateDiagnosticHud()
-        updateNavigationHud(location)
+        updateNavigationHud(androidLoc)
 
         // Record Track Point
-        recordLocationPoint(location)
+        recordLocationPoint(androidLoc)
 
+        // Force Mapbox LocationComponent blue dot update
         mapboxMap?.let { map ->
             try {
                 if (map.locationComponent.isLocationComponentEnabled) {
-                    map.locationComponent.forceLocationUpdate(location)
+                    map.locationComponent.forceLocationUpdate(androidLoc)
                 }
-                Unit
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating LocationComponent", e)
+                Log.e(TAG, "Error updating LocationComponent with CurrentPosition", e)
             }
         }
     }
@@ -1362,6 +1422,20 @@ ${finalStyleJsonString ?: "None"}
         }
     }
 
+    private fun updateLocationPanel(cyberLoc: com.cybertrail.app.gis.CyberLocation) {
+        runOnUiThread {
+            tvPanelLat.text = "Lat: %.6f°".format(cyberLoc.latitude)
+            tvPanelLon.text = "Lon: %.6f°".format(cyberLoc.longitude)
+            
+            val demAlt = demSystem.getElevation(cyberLoc.latitude, cyberLoc.longitude)
+            tvPanelAlt.text = "Alt: %.0fm".format(demAlt)
+            
+            tvPanelAccuracy.text = "Acc: %.0fm".format(cyberLoc.accuracy)
+            tvPanelSpeed.text = "Source: %s".format(cyberLoc.source.displayName)
+            tvPanelBearing.text = "Source: %s".format(cyberLoc.source.displayName)
+        }
+    }
+
     private fun updateLocationPanel(location: Location) {
         runOnUiThread {
             tvPanelLat.text = "Lat: %.6f°".format(location.latitude)
@@ -1376,11 +1450,7 @@ ${finalStyleJsonString ?: "None"}
                 tvPanelAccuracy.text = "Accuracy: N/A"
             }
             
-            if (location.hasSpeed()) {
-                tvPanelSpeed.text = "Speed: %.1fm/s".format(location.speed)
-            } else {
-                tvPanelSpeed.text = "Speed: N/A"
-            }
+            tvPanelSpeed.text = "Provider: %s".format(location.provider ?: "GPS")
             
             if (location.hasBearing()) {
                 tvPanelBearing.text = "Bearing: %.0f°".format(location.bearing)
@@ -3749,7 +3819,14 @@ ${finalStyleJsonString ?: "None"}
         tvEmoji.text = getEmojiForIconType(waypoint.iconType)
         tvName.text = waypoint.name
         tvDesc.text = waypoint.description ?: "无备注信息"
-        tvCoords.text = String.format(java.util.Locale.US, "%.6f, %.6f", waypoint.latitude, waypoint.longitude)
+        tvCoords.text = String.format(java.util.Locale.US, "%.6f, %.6f (点击设为当前起点)", waypoint.latitude, waypoint.longitude)
+        tvCoords.setOnClickListener {
+            positionManager.setManualPosition(waypoint.latitude, waypoint.longitude, waypoint.elevation)
+            val androidLoc = positionManager.currentLocation.toAndroidLocation()
+            moveToLocation(androidLoc)
+            Toast.makeText(this@MapActivity, "已将 [${waypoint.name}] 设为当前位置/惯导起点！", Toast.LENGTH_SHORT).show()
+            dialog?.dismiss()
+        }
         tvEle.text = waypoint.elevation?.let { String.format(java.util.Locale.US, "%.1f m", it) } ?: "-- m"
         
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
@@ -4140,15 +4217,7 @@ ${finalStyleJsonString ?: "None"}
     }
 
     private fun getLastKnownLocation(): Location? {
-        val lastLat = lastGpsLatitude
-        val lastLon = lastGpsLongitude
-        if (lastLat != null && lastLon != null) {
-            return Location("").apply {
-                latitude = lastLat
-                longitude = lastLon
-            }
-        }
-        return null
+        return positionManager.currentLocation.toAndroidLocation()
     }
 
     private fun updateNavigationHud(currentLocation: Location?) {

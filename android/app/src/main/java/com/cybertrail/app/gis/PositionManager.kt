@@ -30,7 +30,17 @@ data class CyberLocation(
     val accuracy: Float = 0f,
     val source: LocationSource,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    fun toAndroidLocation(): Location {
+        val loc = Location(source.displayName)
+        loc.latitude = latitude
+        loc.longitude = longitude
+        altitude?.let { loc.altitude = it }
+        loc.accuracy = accuracy
+        loc.time = timestamp
+        return loc
+    }
+}
 
 /**
  * PositionManager orchestrates location fixes across all Android location providers,
@@ -168,8 +178,8 @@ class PositionManager(
     }
 
     /**
-     * ④ Manual Position: User taps waypoint, taps map, or inputs Lat/Lon
-     * INS dead reckoning continues from this new coordinate.
+     * ④ Manual Position: User taps waypoint, taps map, or inputs Lat/Lon.
+     * Acts as INS Origin. INS dead reckoning continues from this new coordinate.
      */
     fun setManualPosition(latitude: Double, longitude: Double, altitude: Double? = null) {
         val manualLoc = CyberLocation(
@@ -180,21 +190,26 @@ class PositionManager(
             source = LocationSource.MANUAL,
             timestamp = System.currentTimeMillis()
         )
+        insPdrManager?.resetOrigin(latitude, longitude)
         updatePosition(manualLoc)
-        Log.i(TAG, "Manual location set: Lat=$latitude, Lon=$longitude")
+        Log.i(TAG, "Manual location set as INS Origin: Lat=$latitude, Lon=$longitude")
     }
 
     /**
      * Process PDR step updates from InsPdrManager when GPS is unavailable
      */
     fun onInsPdrPositionUpdate(lat: Double, lon: Double, alt: Double?) {
-        // Only accept INS if current source priority is lower than GPS/Network, or in INS_ONLY mode
-        if (currentSource == LocationSource.INS || currentSource == LocationSource.LAST_FIX || currentSource == LocationSource.MANUAL) {
+        // Accept INS update when GPS/Network is unavailable or when running on INS / MANUAL / LAST_FIX
+        val timeSinceLastGps = System.currentTimeMillis() - (currentLocation?.timestamp ?: 0L)
+        if (currentSource == LocationSource.INS || 
+            currentSource == LocationSource.LAST_FIX || 
+            currentSource == LocationSource.MANUAL || 
+            timeSinceLastGps > GPS_TIMEOUT_MS) {
             val insLoc = CyberLocation(
                 latitude = lat,
                 longitude = lon,
-                altitude = alt,
-                accuracy = 10f,
+                altitude = alt ?: currentLocation?.altitude,
+                accuracy = 8f,
                 source = LocationSource.INS,
                 timestamp = System.currentTimeMillis()
             )
