@@ -691,7 +691,7 @@ ${finalStyleJsonString ?: "None"}
         startGpsTracking()
 
         // Trigger immediate position update from Last Fix / initial position
-        onCurrentPositionUpdated(positionManager.currentLocation)
+        onCurrentPositionUpdated(positionManager.currentLocation ?: positionManager.getLastFix())
     }
 
     private fun runOfflineDiagnostics() {
@@ -1298,7 +1298,7 @@ ${finalStyleJsonString ?: "None"}
     }
 
     override fun onLocationChanged(location: Location) {
-        positionManager.onGpsLocation(location)
+        positionManager.onLocationChanged(location)
         insPdrManager.onGpsLocation(location)
     }
 
@@ -1334,54 +1334,14 @@ ${finalStyleJsonString ?: "None"}
     }
 
     private fun performLocateAction() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1001)
-            return
-        }
-
-        Toast.makeText(this, "正在获取精准定位...", Toast.LENGTH_SHORT).show()
-
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            if (location != null) {
-                moveToLocation(location)
-            } else {
-                try {
-                    val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000).apply {
-                        setMaxUpdates(1)
-                    }.build()
-                    
-                    fusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
-                        override fun onLocationResult(locationResult: LocationResult) {
-                            val newLocation = locationResult.lastLocation
-                            if (newLocation != null) {
-                                moveToLocation(newLocation)
-                            } else {
-                                fallbackToSystemLocation()
-                            }
-                        }
-                    }, mainLooper)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error requesting FusedLocation, fallback", e)
-                    fallbackToSystemLocation()
-                }
-            }
-        }.addOnFailureListener { e ->
-            Log.e(TAG, "FusedLocationProvider failed", e)
-            fallbackToSystemLocation()
-        }
+        val currentLoc = (positionManager.currentLocation ?: positionManager.getLastFix()).toAndroidLocation()
+        moveToLocation(currentLoc)
+        Toast.makeText(this, "定位至当前位置 (${positionManager.currentSource.displayName})", Toast.LENGTH_SHORT).show()
     }
 
     private fun fallbackToSystemLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return
-        }
-        val sysLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-        if (sysLocation != null) {
-            moveToLocation(sysLocation)
-        } else {
-            Toast.makeText(this, "无法获取当前位置，请确认已开启GPS或高精度定位服务", Toast.LENGTH_LONG).show()
-        }
+        val currentLoc = (positionManager.currentLocation ?: positionManager.getLastFix()).toAndroidLocation()
+        moveToLocation(currentLoc)
     }
 
     private fun moveToLocation(location: Location) {
@@ -1610,16 +1570,10 @@ ${finalStyleJsonString ?: "None"}
                 locationComponent.cameraMode = CameraMode.NONE
                 locationComponent.renderMode = RenderMode.COMPASS
                 
-                val lastLoc = try {
-                    locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                        ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                } catch (e: SecurityException) {
-                    null
-                }
-                lastLoc?.let {
-                    locationComponent.forceLocationUpdate(it)
-                    updateLocationPanel(it)
-                }
+                val currentCyber = positionManager.currentLocation ?: positionManager.getLastFix()
+                val initialLoc = currentCyber.toAndroidLocation()
+                locationComponent.forceLocationUpdate(initialLoc)
+                updateLocationPanel(currentCyber)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enable LocationComponent: ${e.message}", e)
@@ -3815,6 +3769,8 @@ ${finalStyleJsonString ?: "None"}
         val btnDelete: TextView = dialogView.findViewById(R.id.btn_detail_delete)
         val btnClose: TextView = dialogView.findViewById(R.id.btn_detail_close)
 
+        var dialog: AlertDialog? = null
+
         // Bind data
         tvEmoji.text = getEmojiForIconType(waypoint.iconType)
         tvName.text = waypoint.name
@@ -3822,7 +3778,7 @@ ${finalStyleJsonString ?: "None"}
         tvCoords.text = String.format(java.util.Locale.US, "%.6f, %.6f (点击设为当前起点)", waypoint.latitude, waypoint.longitude)
         tvCoords.setOnClickListener {
             positionManager.setManualPosition(waypoint.latitude, waypoint.longitude, waypoint.elevation)
-            val androidLoc = positionManager.currentLocation.toAndroidLocation()
+            val androidLoc = (positionManager.currentLocation ?: positionManager.getLastFix()).toAndroidLocation()
             moveToLocation(androidLoc)
             Toast.makeText(this@MapActivity, "已将 [${waypoint.name}] 设为当前位置/惯导起点！", Toast.LENGTH_SHORT).show()
             dialog?.dismiss()
@@ -3837,8 +3793,6 @@ ${finalStyleJsonString ?: "None"}
             btnFav.text = if (isFav) "★" else "☆"
         }
         updateFavoriteButtonState(waypoint.favorite)
-
-        var dialog: AlertDialog? = null
 
         btnFav.setOnClickListener {
             waypoint.favorite = !waypoint.favorite
@@ -4217,7 +4171,7 @@ ${finalStyleJsonString ?: "None"}
     }
 
     private fun getLastKnownLocation(): Location? {
-        return positionManager.currentLocation.toAndroidLocation()
+        return (positionManager.currentLocation ?: positionManager.getLastFix()).toAndroidLocation()
     }
 
     private fun updateNavigationHud(currentLocation: Location?) {
